@@ -187,3 +187,36 @@ branch=grokbot-build-01
 repo_root=/workspace
 worktree=main
 parent_agent=none
+
+## [2026-10-25T05:29:50Z] SESSION START
+
+tool=Cursor Cloud Agent
+model=cursor-grok-4.5-high-fast
+Repo Root: /workspace
+Branch: grokbot-build-01
+Worktree: main
+Parent Agent: none
+Language: py
+Time Remaining: not configured
+
+## [2026-10-25T05:30:59Z] case_18/20 negative proof (no hardcode)
+
+User Prompt (verbatim, secrets redacted):
+One more non-hardcoded angle on the two sample gaps only. Branch grokbot-build-01, PR #1.
+[Fresh angles: ID synthesis, byte-wise search, retention semantics, activity bridging, negative proof package]
+
+Agent Response Summary:
+Retested general rules for audit_record_6645/5569. Sample-wide suffix synthesis (support/account→audit) scores 0 exact and would regress; cross-case 5569 reuse rejected. Byte-wise scan of dataset/ (103 files) finds exact audit IDs only in sample_output.csv. Retention cannot mint resource_id; activity bridge inconsistent. Wrote code/evaluation/case_18_20_gap.md. Pipeline unchanged; sample remains 30/32 exact; no full regen.
+
+Actions:
+* Pattern/regression probes on sample gold; byte-wise dataset search
+* Added code/evaluation/case_18_20_gap.md; linked from evaluation_report.md
+* Appended log.txt; commit/push; update PR #1
+
+Context:
+tool=Cursor Cloud Agent
+model=cursor-grok-4.5-high-fast
+branch=grokbot-build-01
+repo_root=/workspace
+worktree=main
+parent_agent=none

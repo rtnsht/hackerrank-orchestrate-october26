@@ -22,45 +22,18 @@ Exact-step iteration: 16 → 19 → 21 → 25 → 29 → **30 / 32** (unchanged 
 
 ## Deep-dive: `case_18` / `case_20` (residual exact-step gap)
 
-### What differs vs `sample_output.csv`
+**Full negative-proof package:** [`case_18_20_gap.md`](./case_18_20_gap.md).
 
-Both cases already match gold on **all FINDING and REMEDIATION steps** and on account / search / flow / support / analytics verifications. The **only** delta is one VERIFICATION step each:
+Both cases already match gold on all FINDING / REMEDIATION steps and every VERIFICATION except one retained-audit row each (`audit_record_6645` / `audit_record_5569`). Status remains correctly `INCOMPLETE`.
 
-| Case | Subject | Missing gold step | Other steps |
-| --- | --- | --- | --- |
-| `case_18` | `user_50` / `mori.ren@gmail.com` | `VERIFY_RECORD_PRESENT` `security_service` / `audit_record_6645` / `PRESENT` / `evidence_id=""` | All other 13 steps match |
-| `case_20` | `user_48` / `akosua.gyasi@gmail.com` | `VERIFY_RECORD_PRESENT` `security_service` / `audit_record_5569` / `PRESENT` / `evidence_id=""` | All other 7 steps match |
+Follow-up probes (general rules only; no hardcoding):
 
-Status for both remains correctly `INCOMPLETE`.
+1. **ID synthesis** — no sample-wide pattern ties audit numeric suffixes to same-case account/support/search IDs (`support_N→audit_N` and `account_N→audit_N` both **0** exact matches; would regress). Cross-case reuse of `5569` (`support_5569` on case_18 vs audit on case_20) rejected as a golden shortcut.
+2. **Byte-wise dataset scan** (103 files / ~4 MB) — exact `audit_record_6645|5569` only in `sample_output.csv`; no sidecars/archives/path-derived IDs.
+3. **Retention semantics** — `rule_12` requires VERIFY_RECORD_PRESENT only when a retained audit **exists**; cannot mint `resource_id` without evidence.
+4. **Activity bridging** — other sample audits are evidence-backed with identity match; 18/20 have **0** obs and **0** activity rows; nearby `RETAIN_RECORD` is unrelated `audit_record_7343`.
 
-### Discoverability probe (no hardcoding)
-
-Searched participant-facing sources for `audit_record_6645` and `audit_record_5569` (exact and related tokens: emails, phones, email hashes, `user_50` / `user_48`, resource aliases):
-
-| Source | `audit_record_6645` | `audit_record_5569` |
-| --- | --- | --- |
-| `user_identities.csv` / `user_audit_log.csv` | absent | absent |
-| `system_activity.csv` (`RETAIN_RECORD` and all types) | absent | absent |
-| Structured evidence (JSON/SQL/logs/txt/PDF text) | absent | absent |
-| PNG OCR (all 11 image evidence files, tesseract) | absent | absent |
-| Identity-linked observations for these users | no `audit_record_*` | no `audit_record_*` |
-
-Near-miss noise (not usable as a general rule):
-
-- Bare `6645` → unrelated historical `account_6645` (Feb 2026), not linked to `user_50`.
-- Bare `5569` → `support_5569` (case_18’s support ticket) and unrelated hash/ticket substrings. Mapping `support_5569` → `audit_record_5569` for **case_20** would be a cross-case / golden shortcut, not a policy-grounded alias.
-
-`deletion_rules.csv` `rule_12` correctly requires **RETAIN** / `VERIFY_RECORD_PRESENT` for `SECURITY_AUDIT_LOG` when a record exists. No participant evidence establishes that these two resource IDs exist for these subjects at `audit_at`.
-
-**Conclusion:** the IDs are **not discoverable** from participant data. Leaving them out preserves honesty; **do not hardcode** sample gold audit IDs.
-
-### What was tried
-
-1. Full-text scan of CSVs + all non-image evidence.
-2. Evidence-index identity matching (emails, phones, hashes, `user_id`).
-3. Activity `RETAIN_RECORD` / `LINK_RESOURCE_IDENTITY` windows near `reported_at`.
-4. Post-`audit_at` security ledger fallback (works for other INCOMPLETE audits that appear later; these IDs still absent).
-5. OCR of every PNG including `security_audit_explorer_20260905.png` (only `user_03` / `audit_record_001`–`006` style demo content).
+**Conclusion unchanged:** IDs are not participant-discoverable. Exact score stays **30/32**.
 
 ## OCR / multimodal (opt-in)
 
