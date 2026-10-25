@@ -2,13 +2,18 @@
 """Ghost Data Still Exists — deletion-audit agent entry point.
 
 Deterministic Python owns identity resolution, audit_at cutoffs, deletion_rules
-application, step ordering, and CSV output. Optional LLM/vision hooks are reserved
-for ambiguous request_text and PNG/PDF cases that structured parsers cannot solve.
+application, step ordering, and CSV output. An OpenAI-compatible LLM classifies
+request_text intent (with regex fallback) and may optionally assist messy PDF
+text extraction; it never invents resource_ids or writes steps_json.
 
 Usage:
   python3 code/main.py --sample
   python3 code/main.py
   python3 code/main.py --dataset dataset --output output.csv
+
+LLM (optional):
+  GHOST_DATA_LLM_API_KEY or OPENAI_API_KEY
+  GHOST_DATA_LLM_BASE_URL, GHOST_DATA_LLM_MODEL (default gpt-4o-mini)
 """
 
 from __future__ import annotations
@@ -27,6 +32,7 @@ if str(ROOT) not in sys.path:
 from auditor import DeletionAuditor
 from evidence import EvidenceIndex, load_system_activity
 from identity import IdentityIndex
+from llm import get_llm_client, reset_llm_client, write_usage_markdown
 from policy import Policy
 
 
@@ -113,6 +119,20 @@ def run(
     ocr_images: bool,
     sample_align: bool = False,
 ) -> list:
+    llm = reset_llm_client()
+    if llm.enabled:
+        print(
+            f"LLM intent enabled: provider=openai-compatible model={llm.model} "
+            f"base={llm.base_url}"
+        )
+        if llm.evidence_assist:
+            print("LLM evidence assist ON (GHOST_DATA_LLM_EVIDENCE)")
+    else:
+        print(
+            "LLM disabled (no API key or GHOST_DATA_LLM_DISABLE); "
+            "using deterministic regex intent fallback"
+        )
+
     print(f"Loading identities from {dataset_dir} ...")
     identities = IdentityIndex(dataset_dir)
     print("Loading deletion rules ...")
@@ -123,7 +143,12 @@ def run(
     print("Loading system activity ...")
     activities = load_system_activity(dataset_dir)
     auditor = DeletionAuditor(
-        identities, evidence, policy, activities, sample_align=sample_align
+        identities,
+        evidence,
+        policy,
+        activities,
+        sample_align=sample_align,
+        llm=llm,
     )
 
     cases = load_cases(requests_path)
@@ -146,6 +171,12 @@ def run(
     rows.sort(key=lambda r: r["case_id"])
     write_output(output_path, rows)
     print(f"Wrote {len(rows)} rows to {output_path}")
+
+    usage = get_llm_client().usage.as_dict()
+    print(
+        f"LLM usage: calls={usage['call_count']} cache_hits={usage['cache_hits']} "
+        f"tokens={usage['total_tokens']} est_cost=${usage['estimated_cost_usd']:.6f}"
+    )
     return rows
 
 
@@ -203,6 +234,28 @@ def main(argv: list | None = None) -> int:
         ocr_images=ocr_images,
         sample_align=bool(args.sample),
     )
+
+    llm = get_llm_client()
+    usage_json_path = repo_root / "llm_usage.json"
+    usage_json_path.write_text(
+        json.dumps(llm.usage.as_dict(), indent=2), encoding="utf-8"
+    )
+    print(f"Wrote {usage_json_path}")
+
+    # Refresh evaluation usage report for full runs (and sample when requested).
+    usage_md = ROOT / "evaluation" / "usage_report.md"
+    note_bits = [
+        f"Requests file: `{requests_path.name}`.",
+        f"LLM enabled at runtime: {llm.enabled}.",
+        f"OCR images: {ocr_images}.",
+    ]
+    if not llm.enabled:
+        note_bits.append(
+            "This run used regex intent fallback (0 API calls). "
+            "Re-run with GHOST_DATA_LLM_API_KEY to populate non-zero usage."
+        )
+    write_usage_markdown(usage_md, llm.usage, extra_notes=" ".join(note_bits))
+    print(f"Wrote {usage_md}")
 
     if args.sample:
         gold = dataset_dir / "sample_output.csv"

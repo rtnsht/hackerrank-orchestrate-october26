@@ -36,15 +36,39 @@ python3 code/main.py
 
 Reads `dataset/deletion_requests.csv` and writes root `output.csv` (518 rows, sorted by `case_id`).
 
+### LLM intent (OpenAI-compatible, optional)
+
+Set an API key to classify `request_text` with a real model at runtime. Without a key the pipeline still runs via deterministic regex fallback.
+
+```bash
+export GHOST_DATA_LLM_API_KEY="sk-..."   # or OPENAI_API_KEY
+# optional:
+# export GHOST_DATA_LLM_BASE_URL="https://api.openai.com/v1"
+# export GHOST_DATA_LLM_MODEL="gpt-4o-mini"
+# export GHOST_DATA_LLM_EVIDENCE=1        # assist messy PDF/text mention extraction
+# export GHOST_DATA_LLM_DISABLE=1        # force regex-only even if a key is set
+
+python3 code/main.py --sample
+python3 code/main.py
+```
+
+Responses are schema-validated (pydantic). Failures fall back to regex. Intent results are cached under `code/.cache/llm` (gitignored) by request-text hash. The LLM never invents `resource_id`s and never writes `steps_json`.
+
+Unit tests (mocked HTTP, no network):
+
+```bash
+cd code && python3 -m unittest tests.test_llm -v
+```
+
 Optional OCR (off by default; not required for current sample 30/32 exact):
 
 ```bash
 python3 code/main.py --sample --ocr-images   # or: GHOST_DATA_OCR=1 python3 code/main.py
 ```
 
-Requires system `tesseract` on PATH. OCR uses line-local identifier binding so multi-customer screenshots do not cross-attach emails. On this dataset OCR does not change sample exact-step score (still 30/32); `case_18`/`case_20` audit IDs remain absent from participant evidence including screenshots.
+Requires system `tesseract` on PATH. OCR uses line-local identifier binding so multi-customer screenshots do not cross-attach emails.
 
-Architecture: deterministic Python owns identity resolution, `audit_at` cutoffs, `deletion_rules` application, step ordering, and CSV output. Structured JSON/SQL/log/txt/PDF evidence is parsed without an LLM. Optional local tesseract OCR is opt-in; cloud LLM/vision is unused.
+Architecture: deterministic Python owns identity, `audit_at` cutoffs, `deletion_rules`, GlobalAssigner, step ordering, and CSV output. An OpenAI-compatible LLM classifies deletion intent (regex fallback) and may optionally ground-assist messy PDF/text mentions. Structured JSON/SQL/log evidence stays parser-driven.
 
 
 ## Dataset
