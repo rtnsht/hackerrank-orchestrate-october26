@@ -77,12 +77,41 @@ def score(pred: dict, gold: dict, verbose: bool = False) -> dict:
     }
 
 
+def run_custom(verbose: bool) -> dict:
+    """Run the pipeline on participant-built mutations of the public samples and score them."""
+    import sys
+    sys.path.insert(0, str(REPO / "code"))
+    import main as pipeline
+    spec = json.loads((REPO / "code" / "evaluation" / "custom_cases.json").read_text(encoding="utf-8"))
+    gold = load(REPO / "dataset" / "sample_output.csv")
+    results = []
+    for case in spec["cases"]:
+        requests = pipeline.read_requests(pipeline.INPUTS["sample"])
+        for r in requests:
+            if r["case_id"] == case["base"]:
+                r.update({k: pipeline.norm_ts(v) if k.endswith("_at") else v for k, v in case["override"].items()})
+        row = next(r for r in pipeline.run(requests) if r["case_id"] == case["base"])
+        exp = case["expected"]
+        exp_status, exp_steps = gold[case["base"]] if exp == "same_as_gold" else (exp["deletion_status"], exp["steps"])
+        got = (row["deletion_status"], json.loads(row["steps_json"]))
+        passed = got[0] == exp_status and [key(s) for s in got[1]] == [key(s) for s in exp_steps]
+        results.append({"id": case["id"], "passed": passed, "tests": case["tests"]})
+        if verbose and not passed:
+            print(case["id"], "expected", exp_status, [key(s) for s in exp_steps], "\n got", got[0],
+                  [key(s) for s in got[1]])
+    return {"custom_cases": len(results), "passed": sum(r["passed"] for r in results), "results": results}
+
+
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--custom", action="store_true", help="run and score the participant-built custom cases")
     ap.add_argument("--pred", default=str(REPO / "code" / "evaluation" / "sample_predictions.csv"))
     ap.add_argument("--gold", default=str(REPO / "dataset" / "sample_output.csv"))
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
+    if args.custom:
+        print(json.dumps(run_custom(args.verbose), indent=2))
+        return
     res = score(load(Path(args.pred)), load(Path(args.gold)), args.verbose)
     print(json.dumps(res, indent=2))
 

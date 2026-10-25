@@ -93,3 +93,34 @@ repo_root=/home/user/hackerrank-orchestrate-october26
 worktree=main
 parent_agent=none
 
+## [2026-10-25T00:45:00Z] Iterate MVP to evaluated hybrid solution (continuation of same turn)
+
+User Prompt (verbatim, secrets redacted):
+n we need to understand the sample data provided and see how it work well with our solution
+and go for bare minimum working solution e2e first and then expand and iterate through to enhance and build
+
+Agent Response Summary:
+Iterated the end-to-end MVP against the 32 samples, going from 81% to 100% status accuracy, from 0.79 to 0.97 step F1, and from 19% to 75% exact sequence. Main improvements:
+- timestamp attribution of identifier-less resources via deletion-worker bursts, matching submission results to reported_status and resolved by global elimination;
+- per-copy (replica) state reconstruction;
+- subject-scoped vs complete listings, with absence proven only by post-request listings;
+- Claude Haiku intent and Claude Sonnet vision extraction paths with caches and token accounting;
+- data-catalog identity links with alias resolution;
+- negation-aware intent rules that flag exactly the 10 non-deletion requests.
+Added a contract validator, 4 custom evaluation cases (all passing), evaluation_report.md, usage_report.md, and README setup/architecture. The final run made 0 model calls because no ANTHROPIC_API_KEY is configured in this container.
+
+Actions:
+* Added code/ghost/{attribution,llm,extract}.py and code/cache/evidence_extractions.json
+* Edited code/ghost/{audit,loaders/__init__,intent,policy,identity}.py, code/main.py, code/evaluation/main.py
+* Created code/evaluation/{custom_cases.json,evaluation_report.md,usage_report.md}; updated README.md
+* Ran python3 code/main.py (518 rows validated), python3 code/evaluation/main.py [--custom], pyflakes
+* git commit + push to claudecode-build-01
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5
+branch=claudecode-build-01
+repo_root=/home/user/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
+

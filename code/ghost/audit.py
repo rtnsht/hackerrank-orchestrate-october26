@@ -68,7 +68,13 @@ SYSTEM_FROM_ID = {"account": "account_service", "search": "search_service", "ana
                   "legal_hold": "legal_service", "marketing": "marketing_platform"}
 
 
-def _copy_state(obs: list[Observation], scopes: list, rid: str, audit_at: str, files: set, check_scopes: bool):
+# Complete listings: dedicated per-system tables and inventory snapshots. Snapshot bundles and generic
+# multi-collection replica dumps are captures taken for particular subjects.
+SUBJECT_SCOPED = {"bundle", "sql_replica"}
+
+
+def _copy_state(obs: list[Observation], scopes: list, rid: str, audit_at: str, files: set, check_scopes: bool,
+                requested_at: str = ""):
     """Latest state of one physical copy: dict(present, exposed, active, evidence_id, observed_at)."""
     st = {"present": None, "exposed": None, "active": None, "evidence_id": "", "observed_at": "",
           "exposed_ev": "", "active_ev": ""}
@@ -85,10 +91,11 @@ def _copy_state(obs: list[Observation], scopes: list, rid: str, audit_at: str, f
             st["active"], st["active_ev"] = o.active, o.evidence_id
     if check_scopes:
         for sc in scopes:
-            if sc.source == "bundle" and sc.evidence_id not in files:
-                continue  # bundle listings are subject-scoped captures
+            if sc.source in SUBJECT_SCOPED and sc.evidence_id not in files:
+                continue  # mixed-collection captures only list the subjects they were taken for
+            # only a listing taken after the request (a post-deletion check) can prove absence
             if sc.available_at <= audit_at and sc.observed_at <= audit_at and sc.observed_at > st["observed_at"] \
-                    and rid not in sc.resource_ids:
+                    and sc.observed_at >= requested_at and rid not in sc.resource_ids:
                 st.update(present=False, exposed=None, evidence_id=sc.evidence_id, observed_at=sc.observed_at)
     return st
 
@@ -116,7 +123,7 @@ def resolve_state(store: EvidenceStore, by_res: dict, rid: str, req: dict, files
     for copy, cobs in by_copy.items():
         scopes = sorted((sc for sc in store.scopes if sc.system_id == system and sc.copy == copy),
                         key=lambda x: x.observed_at)
-        copies[copy] = _copy_state(cobs, scopes, rid, audit_at, files, check_scopes)
+        copies[copy] = _copy_state(cobs, scopes, rid, audit_at, files, check_scopes, requested_at)
     present = [c for c in copies.values() if c["present"]]
     exposed = [c for c in present if c["exposed"]]
     if present:
@@ -171,7 +178,6 @@ def plan(case_id: str, states: list[ResourceState], policy: Policy) -> CaseResul
 
 def audit_case(req: dict, subject: Subject | None, store: EvidenceStore, by_res: dict, policy: Policy,
                attribution) -> CaseResult:
-    audit_at = req["audit_at"]
     if subject is None:
         return CaseResult(req["case_id"], "COMPLETE", [], {"error": "subject not resolved"})
     resources = attribution.resources_for(req)

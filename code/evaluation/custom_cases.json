@@ -1,0 +1,24 @@
+{
+  "_about": "Participant-built evaluation cases. Each mutates one public sample request and states the expected answer, derived by hand from participant-visible evidence (see evaluation/evaluation_report.md).",
+  "cases": [
+    {"id": "custom_01_negated_deletion_words", "base": "case_05",
+     "override": {"request_text": "Please send me a copy of the data you hold on this account. I still use it, so do not delete or change anything."},
+     "expected": {"deletion_status": "NOT_APPLICABLE", "steps": []},
+     "tests": "Intent: deletion vocabulary inside an explicit non-deletion request must not authorize deletion."},
+    {"id": "custom_02_historical_email", "base": "case_12",
+     "override": {"email": "minjun.kim90@gmail.com"},
+     "expected": "same_as_gold",
+     "tests": "Identity: the request arrives with the subject's previous email (user_audit_log audit_282); the analytics record is only linked through sha256(old email)."},
+    {"id": "custom_03_uppercase_email", "base": "case_14",
+     "override": {"email": "Y.TANAKA32@GMAIL.COM"},
+     "expected": "same_as_gold",
+     "tests": "Identity: email matching must be case-insensitive."},
+    {"id": "custom_04_audit_before_readback", "base": "case_21",
+     "override": {"audit_at": "2026-09-15T09:00:00Z"},
+     "expected": {"deletion_status": "COMPLETE", "steps": [
+       {"step_no": 1, "phase": "VERIFICATION", "system_id": "account_service", "resource_id": "account_6440", "operation": "VERIFY_RECORD_ABSENT", "state": "ABSENT", "evidence_id": "evidence_90"},
+       {"step_no": 2, "phase": "VERIFICATION", "system_id": "security_service", "resource_id": "audit_record_3737", "operation": "VERIFY_RECORD_PRESENT", "state": "PRESENT", "evidence_id": ""},
+       {"step_no": 3, "phase": "VERIFICATION", "system_id": "analytics_platform", "resource_id": "analytics_5335", "operation": "VERIFY_RECORD_ANONYMIZED", "state": "ANONYMIZED", "evidence_id": ""}]},
+     "tests": "Time cutoff: the 09-15 11:44 readback (evidence_92) did not exist at a 09:00 audit, so it must not be cited; only the 09-05 post-request account inventory (evidence_90) can prove the profile absent."}
+  ]
+}

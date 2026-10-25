@@ -1,3 +1,72 @@
+# Solution: Deletion-Audit Agent (Python)
+
+A hybrid agent with two parts. A **deterministic evidence engine** does identity resolution, timestamp
+attribution, state reconstruction at `audit_at`, policy and step planning. **Claude** is used only where code
+is weak: multilingual request intent and screenshot/PDF extraction, both cached.
+
+## Setup and run
+
+```bash
+python3 --version                 # 3.10+ (developed on 3.13); core pipeline uses only the standard library
+pip install anthropic             # optional: only needed for live Claude calls
+export ANTHROPIC_API_KEY=...      # optional: or put it in an uncommitted .env at the repo root
+
+python3 code/main.py                      # audit all 518 requests -> ./output.csv (contract-validated)
+python3 code/main.py --cases sample       # audit the 32 public samples
+python3 code/evaluation/main.py -v        # score samples vs dataset/sample_output.csv
+python3 code/evaluation/main.py --custom  # participant-built evaluation cases
+python3 code/main.py --debug case_11      # show linked resources and reconstructed state for one case
+python3 code/main.py --extract            # (re)extract uncached screenshots/PDFs with Claude vision
+GHOST_OFFLINE=1 python3 code/main.py      # force the cached / rule-based path (no API calls)
+```
+
+Without credentials the run is fully offline and deterministic. It uses the committed caches in `code/cache/`
+and the rule-based intent classifier.
+
+## Architecture
+
+```
+dataset/ ──► 1. Loaders (ghost/loaders) ─► Observation store + complete listings ("scopes")
+              SQL dumps · JSON bundles/exports/record histories · 6 log syntaxes · handover txt
+              screenshots/PDFs (Claude vision cache) · activity claims · data-catalog links
+         ──► 2. Identity graph (ghost/identity) current + historical email/phone, sha256(email)
+         ──► 3. Attribution (ghost/attribution) resource → request:
+              identifier links, plus deletion-worker bursts around reported_at (global elimination)
+         ──► 4. Per case: intent (ghost/intent) → state at audit_at per physical copy (ghost/audit)
+              → policy (ghost/policy, deletion_rules.csv) → ordered FINDING/REMEDIATION/VERIFICATION steps
+         ──► output.csv  (validated)  ──► code/evaluation (scorer, custom cases, reports)
+```
+
+Key rules:
+* Workflow statuses and activity results are **claims**, never proof.
+* Only evidence available at or before `audit_at` is cited.
+* A replica copy seen after the request keeps the record present even when the primary was deleted.
+* A listing proves absence only when it was taken after the request and covers the subject.
+
+## Approach chosen and alternatives
+
+| | A: LLM agent per case | B: rules only | **C: hybrid (chosen)** |
+|---|---|---|---|
+| Exact IDs, evidence and order | drift-prone | exact | exact |
+| Determinism | low | full | full (cached) |
+| Tokens per full run | ~10–30M | 0 | ~0.26M cold, 0 warm |
+| Multilingual / negated intent, screenshots | good | weak | good |
+
+Python was chosen over JS, Rust and Go. It has built-in `sqlite3`, `json`, `csv` and `hashlib`, PDF tooling,
+and a first-class Anthropic SDK. At about 5 MB of data, runtime speed does not matter, and iteration speed on
+messy formats does.
+
+Results on the public samples: 100 % status, 97.1 % step F1, 75 % exact sequence. Details are in
+`code/evaluation/evaluation_report.md`; token and cost figures are in `code/evaluation/usage_report.md`.
+
+Package for submission (excludes `dataset/`, caches and secrets):
+
+```bash
+zip -r code.zip README.md code -x "*/__pycache__/*" "*/.venv/*" "*/venv/*" "*/node_modules/*" "*/.git/*" "*/.DS_Store"
+```
+
+---
+
 # HackerRank Orchestrate - October 2026
 
 ## Ghost Data Still Exists

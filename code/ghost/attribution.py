@@ -82,6 +82,9 @@ class Attribution:
             if subj:
                 self.case_user[c["case_id"]] = subj.user_id
         self.cases = {c["case_id"]: c for c in cases if c["case_id"] in self.case_user}
+        self.user_cases: dict[str, list] = defaultdict(list)
+        for c in self.cases.values():
+            self.user_cases[self.case_user[c["case_id"]]].append(c)
         self.assigned: dict[str, set] = defaultdict(set)   # case_id -> resource ids from the worker burst
         self.event_of: dict[str, dict] = {}
         self._assign()
@@ -182,8 +185,11 @@ class Attribution:
         return False
 
     def _identifier_relevant(self, rid: str, uid: str, case: dict) -> bool:
-        times = self.resource_user_times.get((rid, uid), [])
-        return any(t >= case["requested_at"] for t in times)
+        """An identifier observation belongs to the subject's most recent request made before it."""
+        later = [c["requested_at"] for c in self.user_cases.get(uid, ()) if c["requested_at"] > case["requested_at"]]
+        nxt = min(later) if later else None
+        return any(t >= case["requested_at"] and (nxt is None or t < nxt)
+                   for t in self.resource_user_times.get((rid, uid), []))
 
     # ------------------------------------------------------------------
     def resources_for(self, case: dict) -> set[str]:
