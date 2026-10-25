@@ -12,32 +12,39 @@ Read [`problem_statement.md`](./problem_statement.md) for the complete challenge
 
 ---
 
-## Quick Start
-
-Clone the repository and move into the project directory:
+## Quick Start (this fork)
 
 ```bash
-git clone https://github.com/interviewstreet/hackerrank-orchestrate-october26.git
+git clone https://github.com/rtnsht/hackerrank-orchestrate-october26.git
 cd hackerrank-orchestrate-october26
+python3 -m pip install -r code/requirements.txt
 ```
 
-Start your AI coding tool from the **repository root** so it automatically reads [`AGENTS.md`](./AGENTS.md) and logs your session turns to `log.txt` in the root directory.
+### Sample mode (32 cases — develop / score)
 
-Build your solution in `code/main.py`, or use another language and document its setup and run command clearly in your README.
+```bash
+python3 code/main.py --sample
+```
 
-Your solution must:
+Writes root `output.csv` and prints status/step accuracy vs `dataset/sample_output.csv`.
 
-- Read the input files from `dataset/`
-- Generate one prediction row for every request in `dataset/deletion_requests.csv`
-- Write the final predictions to `output.csv` in the repository root
-
-Run the starter Python entry point with:
+### Full evaluation set (518 cases)
 
 ```bash
 python3 code/main.py
 ```
 
-The blank template at `dataset/output.csv` is provided as a reference. Your final generated file for submission must be the root-level `output.csv`.
+Reads `dataset/deletion_requests.csv` and writes root `output.csv` (518 rows, sorted by `case_id`).
+
+Optional OCR (off by default; not required for current sample 30/32 exact):
+
+```bash
+python3 code/main.py --sample --ocr-images   # or: GHOST_DATA_OCR=1 python3 code/main.py
+```
+
+Requires system `tesseract` on PATH. OCR uses line-local identifier binding so multi-customer screenshots do not cross-attach emails. On this dataset OCR does not change sample exact-step score (still 30/32); `case_18`/`case_20` audit IDs remain absent from participant evidence including screenshots.
+
+Architecture: deterministic Python owns identity resolution, `audit_at` cutoffs, `deletion_rules` application, step ordering, and CSV output. Structured JSON/SQL/log/txt/PDF evidence is parsed without an LLM. Optional local tesseract OCR is opt-in; cloud LLM/vision is unused.
 
 
 ## Dataset

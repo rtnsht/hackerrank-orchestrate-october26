@@ -1,0 +1,6 @@
+pypdf>=4.0.0
+# Optional OCR for PNG/JPEG evidence:
+#   system package: tesseract-ocr (CLI `tesseract` on PATH)
+#   enable with: python3 code/main.py --ocr-images
+#            or: GHOST_DATA_OCR=1 python3 code/main.py
+# pillow is not required; tesseract reads image files directly.
