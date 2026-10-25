@@ -21,18 +21,22 @@ from policy import (
 # Multilingual deletion intent cues (deterministic; LLM optional later).
 DELETION_PATTERNS = [
     r"delet",  # delete / deleting / deleted / deletion
-    r"\berase\b",
-    r"\bremoved?\b",
+    r"eras",  # erase / erased / erasing / erasure
+    r"\bremov(?:e|ed|ing|al)\b",
     r"\bclos(?:e|ed|ing)\b",
     r"\bpermanently\b",
     r"\bsuppress(?:ion)?\b",
     r"elimin",  # Spanish eliminar / French éliminer
     r"borrar",
     r"apag",  # Portuguese apagar
+    r"exclus",  # Portuguese exclusão / Spanish exclusión
     r"lösch",  # German
     r"supprim",  # French
+    r"\bpurg",
+    r"\bwipe\b",
     r"削除",
     r"삭제",
+    r"抹消",
     r"account.*(gone|removed|closed)",
     r"remove records",
     r"personal-data deletion",
@@ -50,20 +54,44 @@ NON_DELETION_PATTERNS = [
     r"\baccess request\b",
     r"\bsubject access\b",
     r"\bdata export only\b",
-    r"\bcorrect my (name|email|phone|address)\b",
+    r"\bdownload my (account )?information\b",
+    r"\bportable format\b",
+    r"\bcorrect (my|the) (name|email|phone|address|surname|profile)\b",
+    r"\bmisspelled\b",
+    r"\bchange the email\b",
     r"\bopt[\s-]?out of marketing\b",
     r"\bdo not delete\b",
     r"\bnot asking (you )?to delete\b",
+    r"\bwithout (removing|deleting|erasing)\b",
+    r"\bleave (the |my )?(account|profile)\b",
+    r"\bkeep (the |my )?(account|profile)\b",
+    r"\bcontinue using\b",
+    r"\bcopy of .*invoice",
+    r"\binvoices for my records\b",
 ]
+
+
+def _fold_accents(text: str) -> str:
+    import unicodedata
+
+    return "".join(
+        c
+        for c in unicodedata.normalize("NFKD", text)
+        if not unicodedata.combining(c)
+    )
 
 
 def is_deletion_request(request_text: str) -> bool:
     text = request_text.lower()
-    has_deletion = any(re.search(p, text, re.I) for p in DELETION_PATTERNS)
+    folded = _fold_accents(text)
+    has_deletion = any(
+        re.search(p, text, re.I) or re.search(p, folded, re.I)
+        for p in DELETION_PATTERNS
+    )
     if not has_deletion:
         return False
     for pat in NON_DELETION_PATTERNS:
-        if re.search(pat, text, re.I):
+        if re.search(pat, text, re.I) or re.search(pat, folded, re.I):
             return False
     return True
 

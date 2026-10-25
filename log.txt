@@ -109,3 +109,47 @@ branch=grokbot-build-01
 repo_root=/workspace
 worktree=main
 parent_agent=none
+
+## [2026-10-25T00:38:57Z] SESSION START
+
+tool=Cursor Cloud Agent
+model=cursor-grok-4.5-high-fast
+Repo Root: /workspace
+Branch: grokbot-build-01
+Worktree: main
+Parent Agent: none
+Language: py
+Time Remaining: not configured
+
+## [2026-10-25T00:40:41Z] Scale to full 518 evaluation set
+
+User Prompt (verbatim, secrets redacted):
+Sample is at 32/32 status and 30/32 exact steps. Leave case_18/case_20 audit-only gaps (no participant evidence) — do not hardcode sample_output IDs.
+
+Next goal: scale to full evaluation set.
+1. Run pipeline on dataset/deletion_requests.csv (518 cases).
+2. Write root output.csv: exactly 518 data rows sorted by case_id; columns case_id,deletion_status,steps_json; valid statuses and step contract.
+3. Implement NOT_APPLICABLE for non-deletion request_text (multilingual).
+4. Keep deterministic Python first; LLM/vision only if a clear blocker remains after CSV/SQL/JSON/logs/PDF text path.
+5. Update code/evaluation/evaluation_report.md and usage_report.md for this full run (honest metrics; note sample 30/32 exact; token usage if any LLM).
+6. Stay on grokbot-build-01 (or grokbot-build-02); append log.txt; update PR #1.
+7. Final report: status distribution counts, any hard failures, runtime, and known limitations.
+
+Success: clean full run produces valid 518-row output.csv + updated eval/usage docs on the PR.
+
+Agent Response Summary:
+Scaled to full deletion_requests.csv. Fixed multilingual intent (erased/exclusão) yielding 5 true NOT_APPLICABLE. Full run wrote valid 518-row output.csv in ~3.5s with status counts INCOMPLETE=364 COMPLETE=149 NOT_APPLICABLE=5 and zero contract errors. Zero LLM calls. Sample remains 32/32 status and 30/32 exact. Updated evaluation/usage reports; pushed grokbot-build-01 and updated PR #1.
+
+Actions:
+* Updated code/auditor.py intent patterns
+* Ran python3 code/main.py (518) and --sample regression
+* Wrote code/evaluation/evaluation_report.md and usage_report.md
+* Wrote root output.csv (518 rows); appended log.txt; commit/push; update PR #1
+
+Context:
+tool=Cursor Cloud Agent
+model=cursor-grok-4.5-high-fast
+branch=grokbot-build-01
+repo_root=/workspace
+worktree=main
+parent_agent=none
