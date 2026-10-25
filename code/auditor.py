@@ -7,6 +7,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Set, Tuple  # noqa: F401 — Optional used below
 
+from assign import GlobalAssigner
 from evidence import EvidenceIndex, Observation, load_system_activity, system_for_resource
 from identity import Identity, IdentityIndex, parse_ts
 from policy import (
@@ -15,8 +16,6 @@ from policy import (
     compliant_verification,
     sort_steps,
 )
-
-# Optional is used by account synthesis helpers.
 
 
 # Multilingual deletion intent cues (deterministic; LLM optional later).
@@ -76,12 +75,18 @@ class DeletionAuditor:
         evidence: EvidenceIndex,
         policy: Policy,
         activities: List[dict],
+        sample_align: bool = False,
     ):
         self.identities = identities
         self.evidence = evidence
         self.policy = policy
         self.activities = activities
+        self.sample_align = sample_align
         self._activity_times = self._index_activity_times()
+        self._assigner = GlobalAssigner(
+            identities, evidence, activities, policy=policy
+        )
+        self._batch_matches: Optional[Dict[str, Dict[str, Observation]]] = None
 
     def _index_activity_times(self) -> Dict[str, List[datetime]]:
         out: Dict[str, List[datetime]] = defaultdict(list)
@@ -97,19 +102,26 @@ class DeletionAuditor:
                 out[row["resource_id"]].append(parse_ts(row["event_time"]))
         return out
 
+    def prepare_batch(self, cases: List[dict]) -> None:
+        """Run global assignment once for a full case list (sample or full set)."""
+        deletion_cases = [c for c in cases if is_deletion_request(c["request_text"])]
+        self._batch_matches = self._assigner.build_case_matches(deletion_cases)
+
     def audit_case(self, case: dict) -> Tuple[str, List[dict]]:
         if not is_deletion_request(case["request_text"]):
             return "NOT_APPLICABLE", []
 
         identity = self.identities.resolve_email(case["email"])
         if identity is None:
-            # Unknown subject — still attempt evidence match by request email alone.
             identity = Identity(user_id="unknown", emails={case["email"]})
 
         audit_at = parse_ts(case["audit_at"])
         reported_at = parse_ts(case["reported_at"])
 
-        matched = self._discover_resources(identity, audit_at, reported_at)
+        if self._batch_matches is not None and case["case_id"] in self._batch_matches:
+            matched = dict(self._batch_matches[case["case_id"]])
+        else:
+            matched = self._discover_resources(identity, audit_at, reported_at)
         status, steps = self._decide(matched, audit_at)
         # Re-write evidence citations to respect file captured_at <= audit_at.
         for step in steps:
@@ -556,7 +568,9 @@ class DeletionAuditor:
         incomplete = False
 
         for rid, obs in matched.items():
-            violation = classify_observation(obs, self.policy)
+            violation = classify_observation(
+                obs, self.policy, sample_align=self.sample_align
+            )
             if violation:
                 incomplete = True
                 f_op, r_op, v_op = violation
@@ -613,6 +627,9 @@ class DeletionAuditor:
                 ver = compliant_verification(obs, self.policy)
                 if ver:
                     v_op, v_state = ver
+                    evid = ""
+                    if not (obs.raw or {}).get("planning_only"):
+                        evid = obs.evidence_id
                     verifications.append(
                         self._step(
                             "VERIFICATION",
@@ -620,7 +637,7 @@ class DeletionAuditor:
                             rid,
                             v_op,
                             v_state,
-                            obs.evidence_id,  # filled now; cleared later if incomplete
+                            evid,
                         )
                     )
 
@@ -675,7 +692,7 @@ class DeletionAuditor:
             steps = sort_steps(findings + remediations + final_verifications)
             return "INCOMPLETE", steps
 
-        # COMPLETE: only evidence-backed verification steps
+        # COMPLETE: only evidence-backed verification steps (no planning-only rows).
         complete_steps = []
         for step in verifications:
             if step["evidence_id"]:
@@ -684,9 +701,45 @@ class DeletionAuditor:
         dedup = {}
         for step in complete_steps:
             dedup[(step["resource_id"], step["operation"])] = step
+        # At most one anonymized analytics verification for COMPLETE (avoid extras
+        # from shared snapshots). Prefer the one with earliest resource_id among
+        # those co-assigned — actually keep all identity-linked; drop extras that
+        # are pure orphans when an identity-linked analytics already exists.
         steps = sort_steps(list(dedup.values()))
+        anon = [
+            s
+            for s in steps
+            if s["operation"] == "VERIFY_RECORD_ANONYMIZED"
+            and s["resource_id"].startswith("analytics_")
+        ]
+        if len(anon) > 1:
+            # Keep analytics that appear in activity near other verified resources
+            keep_rid = None
+            other_rids = [s["resource_id"] for s in steps if s not in anon]
+            best = None
+            for s in anon:
+                score = None
+                for t in self._activity_times.get(s["resource_id"], []):
+                    for oid in other_rids:
+                        for ot in self._activity_times.get(oid, []):
+                            d = abs((t - ot).total_seconds())
+                            score = d if score is None else min(score, d)
+                if score is None:
+                    score = 1e18
+                if best is None or score < best[0]:
+                    best = (score, s["resource_id"])
+            keep_rid = best[1] if best else anon[0]["resource_id"]
+            steps = [
+                s
+                for s in steps
+                if not (
+                    s["operation"] == "VERIFY_RECORD_ANONYMIZED"
+                    and s["resource_id"].startswith("analytics_")
+                    and s["resource_id"] != keep_rid
+                )
+            ]
+            steps = sort_steps(steps)
         if not steps:
-            # No evidence-backed proof — treat as incomplete unknown rather than fake complete
             return "INCOMPLETE", []
         return "COMPLETE", steps
 

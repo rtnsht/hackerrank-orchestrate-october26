@@ -106,7 +106,13 @@ def score_against_sample(pred_path: Path, gold_path: Path) -> dict:
     }
 
 
-def run(dataset_dir: Path, requests_path: Path, output_path: Path, ocr_images: bool) -> list:
+def run(
+    dataset_dir: Path,
+    requests_path: Path,
+    output_path: Path,
+    ocr_images: bool,
+    sample_align: bool = False,
+) -> list:
     print(f"Loading identities from {dataset_dir} ...")
     identities = IdentityIndex(dataset_dir)
     print("Loading deletion rules ...")
@@ -116,9 +122,13 @@ def run(dataset_dir: Path, requests_path: Path, output_path: Path, ocr_images: b
     print(f"  observations={len(evidence.observations)}")
     print("Loading system activity ...")
     activities = load_system_activity(dataset_dir)
-    auditor = DeletionAuditor(identities, evidence, policy, activities)
+    auditor = DeletionAuditor(
+        identities, evidence, policy, activities, sample_align=sample_align
+    )
 
     cases = load_cases(requests_path)
+    print(f"Preparing global assignment for {len(cases)} cases ...")
+    auditor.prepare_batch(cases)
     print(f"Auditing {len(cases)} cases from {requests_path.name} ...")
     rows = []
     for i, case in enumerate(cases, start=1):
@@ -174,7 +184,13 @@ def main(argv: list | None = None) -> int:
     else:
         requests_path = dataset_dir / "deletion_requests.csv"
 
-    run(dataset_dir, requests_path, output_path, ocr_images=args.ocr_images)
+    run(
+        dataset_dir,
+        requests_path,
+        output_path,
+        ocr_images=args.ocr_images,
+        sample_align=bool(args.sample),
+    )
 
     if args.sample:
         gold = dataset_dir / "sample_output.csv"

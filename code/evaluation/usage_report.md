@@ -1,10 +1,12 @@
-# Usage Report — Sample BMV run
+# Usage Report — Sample exact-step iteration
 
 ## Scope
 
 Final sample run that produced root `output.csv` from `dataset/sample_deletion_requests.csv` (32 cases).
 
-This BMV path is **deterministic Python only**. No model provider APIs were called.
+Score at this report: **32/32 status**, **30/32 exact `steps_json`**.
+
+This path is **deterministic Python only**. No model provider APIs were called.
 
 ## Model providers and names
 
