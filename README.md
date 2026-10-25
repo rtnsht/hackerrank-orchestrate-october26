@@ -36,9 +36,15 @@ python3 code/main.py
 
 Reads `dataset/deletion_requests.csv` and writes root `output.csv` (518 rows, sorted by `case_id`).
 
-Optional: `--ocr-images` enables tesseract OCR for PNG evidence (off by default; not required for the sample BMV path).
+Optional OCR (off by default; not required for current sample 30/32 exact):
 
-Architecture: deterministic Python owns identity resolution, `audit_at` cutoffs, `deletion_rules` application, step ordering, and CSV output. Structured JSON/SQL/log/txt/PDF evidence is parsed without an LLM. LLM/vision is reserved for later multimodal gaps.
+```bash
+python3 code/main.py --sample --ocr-images   # or: GHOST_DATA_OCR=1 python3 code/main.py
+```
+
+Requires system `tesseract` on PATH. OCR uses line-local identifier binding so multi-customer screenshots do not cross-attach emails. On this dataset OCR does not change sample exact-step score (still 30/32); `case_18`/`case_20` audit IDs remain absent from participant evidence including screenshots.
+
+Architecture: deterministic Python owns identity resolution, `audit_at` cutoffs, `deletion_rules` application, step ordering, and CSV output. Structured JSON/SQL/log/txt/PDF evidence is parsed without an LLM. Optional local tesseract OCR is opt-in; cloud LLM/vision is unused.
 
 
 ## Dataset

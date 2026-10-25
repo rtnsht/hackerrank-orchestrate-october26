@@ -171,7 +171,10 @@ def main(argv: list | None = None) -> int:
     parser.add_argument(
         "--ocr-images",
         action="store_true",
-        help="OCR PNG evidence with tesseract (slower; off by default)",
+        help=(
+            "OCR PNG/JPEG evidence with local tesseract (slower; off by default). "
+            "Also enabled when env GHOST_DATA_OCR=1."
+        ),
     )
     args = parser.parse_args(argv)
 
@@ -179,16 +182,25 @@ def main(argv: list | None = None) -> int:
     dataset_dir = args.dataset or (repo_root / "dataset")
     output_path = args.output or (repo_root / "output.csv")
 
+    import os
+
+    ocr_images = bool(args.ocr_images) or os.environ.get(
+        "GHOST_DATA_OCR", ""
+    ).strip().lower() in {"1", "true", "yes", "on"}
+
     if args.sample:
         requests_path = dataset_dir / "sample_deletion_requests.csv"
     else:
         requests_path = dataset_dir / "deletion_requests.csv"
 
+    if ocr_images:
+        print("OCR enabled (--ocr-images or GHOST_DATA_OCR=1); requires tesseract")
+
     run(
         dataset_dir,
         requests_path,
         output_path,
-        ocr_images=args.ocr_images,
+        ocr_images=ocr_images,
         sample_align=bool(args.sample),
     )
 

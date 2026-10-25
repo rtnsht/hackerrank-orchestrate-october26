@@ -153,3 +153,37 @@ branch=grokbot-build-01
 repo_root=/workspace
 worktree=main
 parent_agent=none
+
+## [2026-10-25T00:53:25Z] SESSION START
+
+tool=Cursor Cloud Agent
+model=cursor-grok-4.5-high-fast
+Repo Root: /workspace
+Branch: grokbot-build-01
+Worktree: main
+Parent Agent: none
+Language: py
+Time Remaining: not configured
+
+## [2026-10-25T00:57:12Z] Polish steps + OCR; case_18/20 undiscoverable
+
+User Prompt (verbatim, secrets redacted):
+Polish step accuracy + multimodal on branch grokbot-build-01 (PR #1). Do NOT invent grader rules; do NOT hardcode gold steps or sample answers.
+[goals: close sample gap without hardcoding; opt-in OCR; broader step-quality; full 518 re-run; report success criteria]
+
+Agent Response Summary:
+Confirmed case_18/case_20 differ only by missing VERIFY_RECORD_PRESENT for audit_record_6645/5569; exhaustive CSV/evidence/OCR search found no participant source — left unhardcoded. Added opt-in OCR (--ocr-images / GHOST_DATA_OCR=1) with line-local identity binding (fixes case_15 false match); OCR on sample still 30/32, no case deltas, ~5.3s. Full 518 regenerated: INCOMPLETE 364 / COMPLETE 149 / NOT_APPLICABLE 5, ~3.1s, 0 LLM/OCR. Docs updated.
+
+Actions:
+* Deep-dive search + tesseract OCR of all PNGs for audit IDs
+* Updated code/evidence.py OCR binding; code/main.py env flag; requirements/README
+* Updated code/evaluation/evaluation_report.md and usage_report.md
+* Re-ran sample (OCR on/off) and full python3 code/main.py; appended log.txt; pushed; updated PR #1
+
+Context:
+tool=Cursor Cloud Agent
+model=cursor-grok-4.5-high-fast
+branch=grokbot-build-01
+repo_root=/workspace
+worktree=main
+parent_agent=none

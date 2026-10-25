@@ -1,35 +1,42 @@
-# Usage Report — Full 518-case run
+# Usage Report — Full 518 + sample OCR polish
 
 ## Scope
 
-Final full-dataset run that produced root `output.csv` from `dataset/deletion_requests.csv` (**518** cases).
+- Full run: `dataset/deletion_requests.csv` → root `output.csv` (**518** rows), OCR **off**.
+- Sample regression: **32/32** status, **30/32** exact `steps_json`.
+- Optional OCR sample pass measured separately (not used for submission `output.csv`).
 
-Also re-validated sample: **32/32** status, **30/32** exact `steps_json` vs `sample_output.csv`.
-
-This path is **deterministic Python only**. No model provider APIs were called.
+Deterministic Python only at evaluation runtime for the submitted full `output.csv`.
 
 ## Runtime
 
-| Metric | Value |
-| --- | --- |
-| Full 518 wall time | **~3.5 s** |
-| Evidence observations indexed | 3639 |
-| Hardware notes | Cursor Cloud Agent VM; single process |
+| Run | Wall time | Notes |
+| --- | --- | --- |
+| Full 518 (OCR off) | **~3.5 s** | submission path |
+| Sample 32 (OCR off) | **~0.7 s** | default |
+| Sample 32 (OCR on) | **~5.3 s** | `--ocr-images` / `GHOST_DATA_OCR=1` |
+| Evidence observations (OCR off) | 3639 | |
+| Evidence observations (OCR on) | ~3664 | +OCR rows |
 
 ## Model providers and names
 
 | Provider | Model | Role |
 | --- | --- | --- |
-| none | n/a | No LLM/vision calls at evaluation runtime |
+| none | n/a | No LLM/vision API calls |
 
-Coding agent used during development (not invoked at evaluation runtime): Cursor Cloud Agent / `cursor-grok-4.5-high-fast`.
+Local OCR (optional): system `tesseract` CLI — not a cloud model; **0 tokens**.
+
+Coding agent (development only): Cursor Cloud Agent / `cursor-grok-4.5-high-fast`.
 
 ## Model-call counts
 
-| Model | Calls |
+| Model / tool | Calls (full submission run) |
 | --- | --- |
-| (none) | 0 |
-| **Total** | **0** |
+| LLM APIs | **0** |
+| tesseract OCR | **0** (OCR off) |
+| **Total billable model calls** | **0** |
+
+Optional OCR sample pass: 11 image files OCRed once during indexing (~5 s total); still **0** LLM tokens.
 
 ## Tokens
 
@@ -39,18 +46,11 @@ Coding agent used during development (not invoked at evaluation runtime): Cursor
 | Output tokens | 0 |
 | Total tokens | 0 |
 | Average tokens / request | 0 |
-| Total tokens (518 requests) | 0 |
-
-## Estimated cost
-
-| Metric | Value |
-| --- | --- |
-| Total estimated cost | $0.00 |
-| Average cost / request | $0.00 |
-| Per-model totals | n/a (no models) |
+| Estimated total cost | **$0.00** |
+| Estimated cost / request | **$0.00** |
 
 ## Notes
 
-- Runtime work is local CSV/SQL/JSON/log/PDF-text parsing under `dataset/`.
-- Optional `--ocr-images` (tesseract) was **not** enabled for this submission run.
-- If multimodal/LLM stages are added later for ambiguous `request_text` or PNG-only evidence, this file must be updated with per-model call counts, tokens, and cost.
+- Enable OCR: `python3 code/main.py --ocr-images` or `GHOST_DATA_OCR=1`.
+- Requires `tesseract` on PATH (`tesseract-ocr` system package).
+- OCR did not change any sample case outputs after line-local binding; did not recover `case_18`/`case_20` audits.

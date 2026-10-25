@@ -208,7 +208,7 @@ class EvidenceIndex:
                     self._parse_textish(file_id, captured_at, path)
                 elif suffix == ".pdf":
                     self._parse_pdf(file_id, captured_at, path)
-                elif suffix == ".png" and self.ocr_images:
+                elif suffix in {".png", ".jpg", ".jpeg", ".webp", ".gif"} and self.ocr_images:
                     self._parse_png(file_id, captured_at, path)
             except Exception as exc:  # noqa: BLE001 - keep indexing resilient
                 # Skip corrupt/unreadable evidence; do not fail the whole run.
@@ -980,39 +980,166 @@ class EvidenceIndex:
         self._parse_ocr_or_pdf_text(evidence_id, captured_at, text, path.name)
 
     def _parse_png(self, evidence_id: str, captured_at: datetime, path: Path) -> None:
+        """OCR image evidence via local tesseract (optional dependency)."""
         try:
             import subprocess
 
             proc = subprocess.run(
-                ["tesseract", str(path), "stdout"],
+                [
+                    "tesseract",
+                    str(path),
+                    "stdout",
+                    "-l",
+                    "eng",
+                    "--psm",
+                    "6",
+                ],
                 capture_output=True,
                 text=True,
                 check=False,
             )
             text = proc.stdout or ""
+        except FileNotFoundError:
+            print(
+                f"[warn] tesseract not installed; skipping OCR for {evidence_id}"
+            )
+            return
         except Exception:  # noqa: BLE001
             return
-        self._parse_ocr_or_pdf_text(evidence_id, captured_at, text, path.name)
+        if not text.strip():
+            return
+        self._parse_ocr_or_pdf_text(
+            evidence_id, captured_at, text, path.name, from_ocr=True
+        )
 
     def _parse_ocr_or_pdf_text(
-        self, evidence_id: str, captured_at: datetime, text: str, source_name: str
+        self,
+        evidence_id: str,
+        captured_at: datetime,
+        text: str,
+        source_name: str,
+        from_ocr: bool = False,
     ) -> None:
-        emails = EMAIL_RE.findall(text)
-        users = USER_RE.findall(text)
-        resources = RESOURCE_RE.findall(text)
-        # Pair resources found in document with harvested identifiers
-        idents = set(emails) | set(users)
-        for rid in resources:
+        """Extract resources with *local* identifier context.
+
+        Screenshots often show multiple customers on one page. Binding every email
+        on the page to every resource_id caused false identity matches (e.g. OCR
+        regressing sample case_15). Prefer identifiers within a proximity window
+        of each resource mention; fall back to page-level idents only for PDFs
+        with a single resource.
+        """
+        resources = list(RESOURCE_RE.finditer(text))
+        if not resources:
+            return
+
+        # Line index for OCR: screenshots often list one resource per row;
+        # char windows bleed emails from neighboring rows (case_15 regression).
+        line_starts = [0]
+        for i, ch in enumerate(text):
+            if ch == "\n":
+                line_starts.append(i + 1)
+
+        def line_no(pos: int) -> int:
+            lo, hi = 0, len(line_starts) - 1
+            while lo < hi:
+                mid = (lo + hi + 1) // 2
+                if line_starts[mid] <= pos:
+                    lo = mid
+                else:
+                    hi = mid - 1
+            return lo
+
+        id_spans: List[Tuple[int, int, str]] = []
+        for m in EMAIL_RE.finditer(text):
+            id_spans.append((m.start(), m.end(), m.group(0)))
+        for m in USER_RE.finditer(text):
+            id_spans.append((m.start(), m.end(), m.group(0)))
+
+        page_idents = {v for _, _, v in id_spans}
+        window = 120 if from_ocr else 400
+
+        for m in resources:
+            rid = m.group(1)
+            rline = line_no(m.start())
+            if from_ocr:
+                # Same line only — OCR row binding.
+                local = {
+                    val
+                    for s, e, val in id_spans
+                    if line_no(s) == rline
+                }
+                # If the resource line has no email/user, allow ±1 line but only
+                # when that neighbor line does not itself contain another resource.
+                if not local:
+                    neighbor_idents = set()
+                    for delta in (-1, 1):
+                        nline = rline + delta
+                        if nline < 0 or nline >= len(line_starts):
+                            continue
+                        # Neighbor contains another resource? skip.
+                        if any(
+                            line_no(rm.start()) == nline for rm in resources if rm is not m
+                        ):
+                            continue
+                        for s, e, val in id_spans:
+                            if line_no(s) == nline:
+                                neighbor_idents.add(val)
+                    local = neighbor_idents
+                if local:
+                    idents = local
+                elif len(resources) == 1:
+                    idents = set(page_idents)
+                else:
+                    idents = set()
+                start = line_starts[rline]
+                end = (
+                    line_starts[rline + 1]
+                    if rline + 1 < len(line_starts)
+                    else len(text)
+                )
+            else:
+                start = max(0, m.start() - window)
+                end = min(len(text), m.end() + window)
+                local = {
+                    val
+                    for s, e, val in id_spans
+                    if (s >= start and s <= end) or (e >= start and e <= end)
+                }
+                idents = local or (page_idents if len(resources) == 1 else local)
+
             category = category_for_resource(rid)
             state = "PRESENT"
+            local_text = text[start:end].lower()
             if rid.startswith("tombstone_"):
                 category = "ACCOUNT_TOMBSTONE"
-                # if email/name present in same doc, likely exposed unless clearly redacted
-                state = "EXPOSED" if emails else "REDACTED"
-            if rid.startswith("audit_record_"):
+                state = "EXPOSED" if any("@" in x for x in idents) else "REDACTED"
+            elif rid.startswith("audit_record_"):
                 state = "PRESENT"
-            if "support_" in rid and "attachment" in source_name.lower():
+            elif rid.startswith("account_"):
+                if re.search(r"\b(404|not found|absent|deleted|no rows)\b", local_text):
+                    state = "ABSENT"
+            elif rid.startswith("analytics_"):
+                if re.search(r"\banonym", local_text):
+                    state = "ANONYMIZED"
+                elif any("@" in x for x in idents):
+                    state = "EXPOSED"
+            elif rid.startswith("data_flow_"):
+                if re.search(r"\b(disabled|stopped|inactive|off)\b", local_text):
+                    state = "DISABLED"
+                else:
+                    state = "ACTIVE"
+            elif rid.startswith("backup_"):
+                if re.search(r"\b(blocked|deny|disabled)\b", local_text):
+                    state = "BLOCKED"
+                else:
+                    state = "ACTIVE"
+            elif rid.startswith("support_") and "attachment" in source_name.lower():
                 category = "SUPPORT_ATTACHMENT"
+
+            emails_local = [x for x in idents if "@" in x]
+            if from_ocr and len(emails_local) > 1 and not rid.startswith("audit_record_"):
+                continue
+
             self._emit(
                 evidence_id,
                 captured_at,
@@ -1021,7 +1148,11 @@ class EvidenceIndex:
                 category,
                 state,
                 idents,
-                {"source": source_name},
+                {
+                    "source": source_name,
+                    "from_ocr": from_ocr,
+                    "ocr_line_bind": from_ocr,
+                },
             )
 
 
