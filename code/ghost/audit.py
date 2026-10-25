@@ -56,61 +56,86 @@ def visible(o, audit_at: str) -> bool:
     return o.available_at <= audit_at and o.observed_at <= audit_at
 
 
-def link_resources(store: EvidenceStore, subject: Subject, audit_at: str) -> set[str]:
+def subject_files(store: EvidenceStore, subject: Subject) -> set[str]:
+    """Evidence files that mention the subject (subject-scoped captures can prove absence for them)."""
     tokens = subject.tokens()
-    linked = set()
-    for o in store.obs:
-        if visible(o, audit_at) and o.keys & tokens:
-            linked.add(o.resource_id)
-    return linked
+    return {o.evidence_id for o in store.obs if o.keys & tokens}
 
 
-def account_from_activity(store: EvidenceStore, req: dict, taken: set) -> str | None:
-    """Fallback: the deletion worker's account_service submission closest to the reported time."""
-    best, best_gap = None, None
-    from datetime import datetime
-    rep = datetime.fromisoformat(req["reported_at"].replace("Z", "+00:00"))
-    for a in store.activity:
-        if a["target_system"] != "account_service" or a["event_type"] != "DELETE_RECORD":
-            continue
-        if a["resource_id"] in taken:
-            continue
-        gap = abs((datetime.fromisoformat(a["event_time"].replace("Z", "+00:00")) - rep).total_seconds())
-        if best_gap is None or gap < best_gap:
-            best, best_gap = a["resource_id"], gap
-    return best
+SYSTEM_FROM_ID = {"account": "account_service", "search": "search_service", "analytics": "analytics_platform",
+                  "support": "support_platform", "export": "export_service", "data_flow": "integration_service",
+                  "backup": "backup_service", "audit_record": "security_service", "tombstone": "identity_service",
+                  "legal_hold": "legal_service", "marketing": "marketing_platform"}
 
 
-def resolve_state(store: EvidenceStore, by_res: dict, rid: str, audit_at: str) -> ResourceState | None:
-    obs = [o for o in by_res.get(rid, []) if visible(o, audit_at) and not o.claim]
-    if not obs:
-        return None
-    obs.sort(key=lambda o: (o.observed_at, o.available_at))
-    system = obs[-1].system_id
-    category = next((o.category for o in reversed(obs) if o.category), None)
-    st = ResourceState(system, rid, category, history=obs)
-    # latest observation wins; at equal time a present copy (replica drift) beats an absent one
-    latest_t = obs[-1].observed_at
+def _copy_state(obs: list[Observation], scopes: list, rid: str, audit_at: str, files: set, check_scopes: bool):
+    """Latest state of one physical copy: dict(present, exposed, active, evidence_id, observed_at)."""
+    st = {"present": None, "exposed": None, "active": None, "evidence_id": "", "observed_at": "",
+          "exposed_ev": "", "active_ev": ""}
     for o in obs:
         if o.present is not None:
-            st.present = o.present
-            st.evidence_id, st.observed_at = o.evidence_id, o.observed_at
+            st["present"], st["evidence_id"], st["observed_at"] = o.present, o.evidence_id, o.observed_at
             if o.present is False:
-                st.exposed = None
+                st["exposed"] = None
         if o.exposed is not None:
-            st.exposed = o.exposed
+            st["exposed"], st["exposed_ev"] = o.exposed, o.evidence_id
+            if st["present"] is not False:
+                st["evidence_id"], st["observed_at"] = o.evidence_id, o.observed_at
         if o.active is not None:
-            st.active = o.active
-            st.evidence_id, st.observed_at = o.evidence_id, o.observed_at
-    same = [o for o in obs if o.observed_at == latest_t]
-    if any(o.present for o in same):
-        st.present = True
-    # complete listings taken after the last direct observation can prove absence
-    for sc in store.scopes:
-        if sc.system_id == system and sc.available_at <= audit_at and sc.observed_at <= audit_at \
-                and sc.observed_at > st.observed_at and rid not in sc.resource_ids:
-            st.present, st.exposed = False, None
-            st.evidence_id, st.observed_at = sc.evidence_id, sc.observed_at
+            st["active"], st["active_ev"] = o.active, o.evidence_id
+    if check_scopes:
+        for sc in scopes:
+            if sc.source == "bundle" and sc.evidence_id not in files:
+                continue  # bundle listings are subject-scoped captures
+            if sc.available_at <= audit_at and sc.observed_at <= audit_at and sc.observed_at > st["observed_at"] \
+                    and rid not in sc.resource_ids:
+                st.update(present=False, exposed=None, evidence_id=sc.evidence_id, observed_at=sc.observed_at)
+    return st
+
+
+def resolve_state(store: EvidenceStore, by_res: dict, rid: str, req: dict, files: set,
+                  system_hint: str | None = None) -> ResourceState:
+    audit_at, requested_at = req["audit_at"], req["requested_at"]
+    obs = sorted((o for o in by_res.get(rid, []) if not o.claim and visible(o, audit_at)),
+                 key=lambda o: (o.observed_at, o.available_at))
+    any_obs = by_res.get(rid, [])
+    system = obs[-1].system_id if obs else any_obs[0].system_id if any_obs else system_hint
+    category = next((o.category for o in reversed(obs or any_obs) if o.category), None)
+    if category is None:
+        from .observation import SYSTEM_CATEGORY
+        category = SYSTEM_CATEGORY.get(system)
+    st = ResourceState(system, rid, category, history=obs)
+    check_scopes = category not in ("SECURITY_AUDIT_LOG", "LEGAL_HOLD_RECORD")
+    by_copy: dict[str, list] = {"primary": []}
+    for o in obs:
+        # a replica copy only matters if it was seen after the deletion request (a ghost copy)
+        if o.copy != "primary" and o.observed_at < requested_at:
+            continue
+        by_copy.setdefault(o.copy, []).append(o)
+    copies = {}
+    for copy, cobs in by_copy.items():
+        scopes = sorted((sc for sc in store.scopes if sc.system_id == system and sc.copy == copy),
+                        key=lambda x: x.observed_at)
+        copies[copy] = _copy_state(cobs, scopes, rid, audit_at, files, check_scopes)
+    present = [c for c in copies.values() if c["present"]]
+    exposed = [c for c in present if c["exposed"]]
+    if present:
+        best = max(exposed or present, key=lambda c: c["observed_at"])
+        st.present, st.exposed = True, bool(exposed) if any(c["exposed"] is not None for c in present) else None
+        st.evidence_id, st.observed_at = best["evidence_id"], best["observed_at"]
+    else:
+        absent = [c for c in copies.values() if c["present"] is False]
+        if absent:
+            best = max(absent, key=lambda c: c["observed_at"])
+            st.present, st.evidence_id, st.observed_at = False, best["evidence_id"], best["observed_at"]
+        else:
+            known = [c for c in copies.values() if c["exposed"] is not None]
+            if known:
+                best = max(known, key=lambda c: c["observed_at"])
+                st.exposed, st.evidence_id = best["exposed"], best["exposed_ev"] or best["evidence_id"]
+    active = [o for o in obs if o.active is not None]
+    if active:
+        st.active, st.evidence_id = active[-1].active, active[-1].evidence_id
     return st
 
 
@@ -131,8 +156,6 @@ def plan(case_id: str, states: list[ResourceState], policy: Policy) -> CaseResul
         if violated:
             findings.append((finding_op, st.system_id, st.resource_id, st.evidence_id))
             remediation.append((fix_op, st.system_id, st.resource_id, ""))
-        if action == "RETAIN" and st.present is False:
-            continue
         verification.append((verify_op, st.system_id, st.resource_id, st.evidence_id))
     incomplete = bool(findings)
     if incomplete:
@@ -146,18 +169,20 @@ def plan(case_id: str, states: list[ResourceState], policy: Policy) -> CaseResul
     return CaseResult(case_id, "INCOMPLETE" if incomplete else "COMPLETE", steps)
 
 
-def audit_case(req: dict, subject: Subject | None, store: EvidenceStore, by_res: dict, policy: Policy) -> CaseResult:
+def audit_case(req: dict, subject: Subject | None, store: EvidenceStore, by_res: dict, policy: Policy,
+               attribution) -> CaseResult:
     audit_at = req["audit_at"]
     if subject is None:
         return CaseResult(req["case_id"], "COMPLETE", [], {"error": "subject not resolved"})
-    linked = link_resources(store, subject, audit_at)
-    states = [s for rid in sorted(linked) if (s := resolve_state(store, by_res, rid, audit_at))]
-    if not any(s.system_id == "account_service" for s in states):
-        acc = account_from_activity(store, req, set())
-        if acc:
-            states.append(ResourceState("account_service", acc, "USER_PROFILE", present=False))
+    resources = attribution.resources_for(req)
+    files = subject_files(store, subject)
+    states = []
+    for rid in sorted(resources):
+        hint = next((v for k, v in SYSTEM_FROM_ID.items() if rid.startswith(k + "_")), None)
+        ev = attribution.event_of.get(rid)
+        states.append(resolve_state(store, by_res, rid, req, files, ev["target_system"] if ev else hint))
     result = plan(req["case_id"], states, policy)
-    result.debug = {"user_id": subject.user_id, "linked": sorted(linked),
+    result.debug = {"user_id": subject.user_id, "resources": sorted(resources),
                     "states": [(s.system_id, s.resource_id, s.category, s.present, s.exposed, s.active, s.evidence_id)
                                for s in states]}
     return result

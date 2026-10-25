@@ -21,5 +21,9 @@ class Policy:
         if cat == "BACKUP_ARCHIVE":
             # rule_14: archives are retained, so the compliant state is "restore blocked"
             return "BLOCK"
+        if cat == "SUPPORT_CONTACT_COPY":
+            # rule_05 only allows redaction when shared conversation context must be retained;
+            # a contact-index copy has none, so the record itself is deleted
+            return "DELETE"
         rule = self.rules.get(cat or "")
         return rule["required_action"] if rule else None

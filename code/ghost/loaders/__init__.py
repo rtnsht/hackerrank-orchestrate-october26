@@ -71,16 +71,25 @@ def _load_json(store: EvidenceStore, fid: str, cap: str, path):
             store.add(status_obs(fid, cap, norm_ts(r.get("recorded_at")) or cap, r["system"], r["resource_id"],
                                  r.get("record_type"), r.get("result"), r.get("subject_reference"), "record_history"))
     elif "records" in data:  # single collection capture (analytics report, export jobs)
-        system = {"analytics_platform": "analytics_platform", "export_service": "export_service"}.get(
-            data.get("source"), data.get("source"))
+        system = COLLECTION_SYSTEM.get(data.get("collection"), data.get("source"))
         at = norm_ts(data.get("captured_at")) or cap
         for r in data["records"]:
             o = record_obs(fid, cap, at, system, r, "collection")
             if o and "download_available" in r:
-                o.present = True
+                o.present = bool(r["download_available"])
             store.add(o)
     else:
         store.errors.append(f"{fid}: unrecognized JSON layout")
+
+
+COLLECTION_SYSTEM = {
+    "customer_export_jobs": "export_service",
+    "customer_analytics_reports": "analytics_platform",
+    "customer_profiles": "account_service",
+    "customer_search_documents": "search_service",
+    "support_conversations": "support_platform",
+    "ticket_attachments": "support_platform",
+}
 
 
 # ---------------------------------------------------------------- SQL
@@ -213,6 +222,10 @@ def _log_event_obs(fid: str, cap: str, d: dict, trace_keys: list) -> Observation
         o.note = "email_opt_in=" + str(d["email_opt_in"])
     if ev == "deletion_marker_check":
         o.present = truthy(d.get("marker_found")) is not True
+    if d.get("service") == "support_platform" and ev.startswith(("contact_query", "deletion_marker")):
+        # legacy contact-index copy: no conversation context to retain, so the whole copy must go
+        o.category = "SUPPORT_CONTACT_COPY"
+        o.copy = "support_replica"
     if ev == "audit_record_read_completed" and "rows" not in d:
         o.present = True
     return o

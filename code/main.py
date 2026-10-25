@@ -15,6 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from ghost.attribution import Attribution  # noqa: E402
 from ghost.audit import audit_case  # noqa: E402
 from ghost.identity import IdentityGraph  # noqa: E402
 from ghost.intent import classify  # noqa: E402
@@ -38,6 +39,10 @@ def read_requests(path: Path) -> list[dict]:
 def run(requests: list[dict], debug: str | None = None) -> list[dict]:
     store, graph, policy = load_all(), IdentityGraph(), Policy()
     by_res = store.by_resource()
+    # attribution is global: every known deletion request competes for the same activity stream
+    known = read_requests(INPUTS["eval"]) + read_requests(INPUTS["sample"])
+    deletion_cases = [r for r in known if classify(r["request_text"])[0]]
+    attribution = Attribution(store, graph, deletion_cases)
     out = []
     for req in requests:
         authorized, reason = classify(req["request_text"])
@@ -46,7 +51,7 @@ def run(requests: list[dict], debug: str | None = None) -> list[dict]:
             if debug == req["case_id"]:
                 print("intent:", reason)
             continue
-        res = audit_case(req, graph.resolve(req["email"]), store, by_res, policy)
+        res = audit_case(req, graph.resolve(req["email"]), store, by_res, policy, attribution)
         if debug == req["case_id"]:
             print("intent:", reason)
             print(json.dumps(res.debug, indent=1, default=str))
