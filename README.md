@@ -36,15 +36,51 @@ python3 code/main.py
 
 Reads `dataset/deletion_requests.csv` and writes root `output.csv` (518 rows, sorted by `case_id`).
 
+### LLM intent (OpenRouter, OpenAI-compatible)
+
+Provider: **OpenRouter**. Set an API key to classify `request_text` with a real model at runtime. Without a key the pipeline still runs via deterministic regex fallback (0 model calls — do not invent token counts).
+
+| Variable | Default |
+| --- | --- |
+| `GHOST_DATA_LLM_API_KEY` (or `OPENAI_API_KEY`) | _(required to enable LLM; never commit/log)_ |
+| `GHOST_DATA_LLM_BASE_URL` | `https://openrouter.ai/api/v1` |
+| `GHOST_DATA_LLM_MODEL` | `openai/gpt-4o-mini` |
+| `GHOST_DATA_LLM_EVIDENCE` | off (`1` enables grounded PDF/text assist) |
+| `GHOST_DATA_LLM_DISABLE` | off (`1` forces regex-only) |
+
+```bash
+export GHOST_DATA_LLM_API_KEY="sk-or-..."   # OpenRouter key; or OPENAI_API_KEY
+# defaults already point at OpenRouter — override only if needed:
+# export GHOST_DATA_LLM_BASE_URL="https://openrouter.ai/api/v1"
+# export GHOST_DATA_LLM_MODEL="openai/gpt-4o-mini"
+
+python3 code/main.py --sample
+python3 code/main.py
+```
+
+**One-command keyed re-run** (on a machine that has the secret; refreshes sample score, full `output.csv`, and `usage_report.md`):
+
+```bash
+export GHOST_DATA_LLM_API_KEY && python3 -m pip install -q -r code/requirements.txt && python3 code/main.py --sample && python3 code/main.py && echo "OK: sample_score.json + output.csv + code/evaluation/usage_report.md refreshed"
+```
+
+Responses are schema-validated (pydantic). Failures fall back to regex. Intent results are cached under `code/.cache/llm` (gitignored) by request-text hash. The LLM never invents `resource_id`s and never writes `steps_json`.
+
+Unit tests (mocked HTTP, no network):
+
+```bash
+cd code && python3 -m unittest tests.test_llm -v
+```
+
 Optional OCR (off by default; not required for current sample 30/32 exact):
 
 ```bash
 python3 code/main.py --sample --ocr-images   # or: GHOST_DATA_OCR=1 python3 code/main.py
 ```
 
-Requires system `tesseract` on PATH. OCR uses line-local identifier binding so multi-customer screenshots do not cross-attach emails. On this dataset OCR does not change sample exact-step score (still 30/32); `case_18`/`case_20` audit IDs remain absent from participant evidence including screenshots.
+Requires system `tesseract` on PATH. OCR uses line-local identifier binding so multi-customer screenshots do not cross-attach emails.
 
-Architecture: deterministic Python owns identity resolution, `audit_at` cutoffs, `deletion_rules` application, step ordering, and CSV output. Structured JSON/SQL/log/txt/PDF evidence is parsed without an LLM. Optional local tesseract OCR is opt-in; cloud LLM/vision is unused.
+Architecture: deterministic Python owns identity, `audit_at` cutoffs, `deletion_rules`, GlobalAssigner, step ordering, and CSV output. OpenRouter (`openai/gpt-4o-mini` by default) classifies deletion intent with regex fallback and may optionally ground-assist messy PDF/text mentions. Structured JSON/SQL/log evidence stays parser-driven.
 
 
 ## Dataset

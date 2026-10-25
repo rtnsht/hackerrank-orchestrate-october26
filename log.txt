@@ -220,3 +220,67 @@ branch=grokbot-build-01
 repo_root=/workspace
 worktree=main
 parent_agent=none
+
+## [2026-10-25T11:57:20Z] SESSION START
+
+tool=Cursor Cloud Agent
+model=cursor-grok-4.5-high-fast
+Repo Root: /workspace
+Branch: grokbot-build-01
+Worktree: /workspace
+Parent Agent: none
+Language: py
+Time Remaining: not configured
+
+## [2026-10-25T12:01:21Z] Wire OpenAI-compatible LLM intent into auditor
+
+User Prompt (verbatim, secrets redacted):
+Contest: HackerRank Orchestrate Oct 2026 — Ghost Data Still Exists.
+Fork: https://github.com/rtnsht/hackerrank-orchestrate-october26
+Work only on a NEW branch whose name starts with `grokbot` (e.g. `grokbot-llm-01`). Open/update a PR into the fork default branch (or stack onto existing PR #1 if that is the workflow you use — do not force-push or rewrite history on `grokbot-build-01` without need).
+
+Goal: Plug a real LLM into the submitted Python auditor so the solution is genuinely AI-powered at runtime (not 0 model calls). Keep the deterministic core for identity, evidence indexing, policy, GlobalAssigner, step ordering, and `steps_json` emission. The LLM must NOT invent resource_ids or write steps_json directly.
+
+[rest of task: intent classification, optional evidence assist, env vars, schema validation, cache, usage/evaluation reports, README, log.txt, tests with mock if no API key]
+
+Agent Response Summary:
+Added code/llm.py (OpenAI-compatible HTTP, pydantic schema validation, disk cache, usage tracking) and wired LLM-first intent into auditor with strengthened regex fallback. Optional grounded evidence mention assist for PDF/text. No API key in this VM: full 518 + sample ran on fallback (32/32 status, 30/32 exact steps); case_534/542 now NOT_APPLICABLE. Unit tests with mocked HTTP pass. Prepared PR on grokbot-llm-01.
+
+Actions:
+* Created branch grokbot-llm-01 from grokbot-build-01
+* Added code/llm.py, code/tests/test_llm.py, .gitignore
+* Updated code/auditor.py, code/evidence.py, code/main.py, requirements.txt, README.md, evaluation reports
+* Ran unittest tests.test_llm; python3 code/main.py --sample; python3 code/main.py
+* Wrote root output.csv (518) and llm_usage.json
+
+Context:
+tool=Cursor Cloud Agent
+model=cursor-grok-4.5-high-fast
+branch=grokbot-llm-01
+repo_root=/workspace
+worktree=/workspace
+parent_agent=none
+
+## [2026-10-25T12:04:00Z] OpenRouter defaults + keyed re-run recipe
+
+User Prompt (verbatim, secrets redacted):
+Provider confirmed: **OpenRouter** (OpenAI-compatible).
+Defaults: GHOST_DATA_LLM_BASE_URL=https://openrouter.ai/api/v1, model openai/gpt-4o-mini.
+No API key in VM — implement client, mock tests, fallback sample+full, honest usage zeros, PR with OpenRouter README + one-command keyed recipe.
+
+Agent Response Summary:
+Switched LLM defaults to OpenRouter base URL and model id openai/gpt-4o-mini; documented env and keyed re-run recipe. Re-ran 9 unit tests and sample/full on regex fallback (32/32, 30/32; 518 rows; N/A=7). usage_report.md states LLM path was not exercised and keeps genuine zero token counts. Updated PR #2.
+
+Actions:
+* Updated code/llm.py defaults, OpenRouter headers, usage markdown writer
+* Updated README.md, requirements.txt, evaluation reports, tests
+* Ran unittest + sample + full 518 fallback
+* Commit/push grokbot-llm-01; update PR #2
+
+Context:
+tool=Cursor Cloud Agent
+model=cursor-grok-4.5-high-fast
+branch=grokbot-llm-01
+repo_root=/workspace
+worktree=/workspace
+parent_agent=none

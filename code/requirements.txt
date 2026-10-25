@@ -1,6 +1,15 @@
 pypdf>=4.0.0
+httpx>=0.27.0
+pydantic>=2.0.0
 # Optional OCR for PNG/JPEG evidence:
 #   system package: tesseract-ocr (CLI `tesseract` on PATH)
 #   enable with: python3 code/main.py --ocr-images
 #            or: GHOST_DATA_OCR=1 python3 code/main.py
 # pillow is not required; tesseract reads image files directly.
+#
+# Optional LLM via OpenRouter (OpenAI-compatible HTTP):
+#   GHOST_DATA_LLM_API_KEY or OPENAI_API_KEY
+#   GHOST_DATA_LLM_BASE_URL (default https://openrouter.ai/api/v1)
+#   GHOST_DATA_LLM_MODEL (default openai/gpt-4o-mini)
+#   GHOST_DATA_LLM_EVIDENCE=1 to assist messy PDF/text mention extraction
+# Without a key the auditor uses deterministic regex intent fallback.

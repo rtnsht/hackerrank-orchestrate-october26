@@ -1058,6 +1058,30 @@ class EvidenceIndex:
         page_idents = {v for _, _, v in id_spans}
         window = 120 if from_ocr else 400
 
+        # Optional LLM assist on messy free-form PDF/text: candidates are schema-
+        # validated then grounded (must literally appear in the snippet). Never
+        # invents resource_ids into steps_json; only enriches local identifier sets.
+        llm_idents: Set[str] = set()
+        if not from_ocr:
+            try:
+                from llm import get_llm_client
+
+                client = get_llm_client()
+                raw = client.extract_evidence_mentions(text)
+                if raw is not None:
+                    grounded = client.ground_evidence_mentions(text, raw)
+                    llm_idents = set(grounded.candidate_identifiers)
+                    for tok in llm_idents:
+                        if not any(v.lower() == tok.lower() for _, _, v in id_spans):
+                            # Locate for proximity binding when regex missed a span
+                            # (e.g. unusual spacing); still requires literal match.
+                            pos = text.lower().find(tok.lower())
+                            if pos >= 0:
+                                id_spans.append((pos, pos + len(tok), tok))
+                                page_idents.add(tok)
+            except Exception:  # noqa: BLE001
+                pass
+
         for m in resources:
             rid = m.group(1)
             rline = line_no(m.start())
@@ -1105,6 +1129,17 @@ class EvidenceIndex:
                     for s, e, val in id_spans
                     if (s >= start and s <= end) or (e >= start and e <= end)
                 }
+                if not local and llm_idents:
+                    # Widen once for grounded LLM idents only (still text-local).
+                    wide = 800
+                    w_start = max(0, m.start() - wide)
+                    w_end = min(len(text), m.end() + wide)
+                    snippet = text[w_start:w_end]
+                    local = {
+                        tok
+                        for tok in llm_idents
+                        if tok.lower() in snippet.lower()
+                    }
                 idents = local or (page_idents if len(resources) == 1 else local)
 
             category = category_for_resource(rid)

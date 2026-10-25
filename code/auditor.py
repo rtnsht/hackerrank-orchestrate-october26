@@ -18,7 +18,7 @@ from policy import (
 )
 
 
-# Multilingual deletion intent cues (deterministic; LLM optional later).
+# Multilingual deletion intent cues (deterministic fallback when LLM unavailable).
 DELETION_PATTERNS = [
     r"delet",  # delete / deleting / deleted / deletion
     r"eras",  # erase / erased / erasing / erasure
@@ -60,14 +60,22 @@ NON_DELETION_PATTERNS = [
     r"\bmisspelled\b",
     r"\bchange the email\b",
     r"\bopt[\s-]?out of marketing\b",
+    r"\bstop (the )?promotional\b",
+    r"\bpromotional emails?\b",
     r"\bdo not delete\b",
-    r"\bnot asking (you )?to delete\b",
+    r"\bdon'?t delete\b",
+    r"\bnot asking (you )?(to |for )?(delete|deletion)\b",
+    r"\bi (do not|don't) want .{0,40}deleted\b",
     r"\bwithout (removing|deleting|erasing)\b",
     r"\bleave (the |my )?(account|profile)\b",
     r"\bkeep (the |my )?(account|profile)\b",
+    r"\bstill need (the |my )?account\b",
+    r"\bstill use (it|the account|my account)\b",
     r"\bcontinue using\b",
     r"\bcopy of .*invoice",
     r"\binvoices for my records\b",
+    r"\bsend me a copy\b",
+    r"\bcopy of the information\b",
 ]
 
 
@@ -81,7 +89,8 @@ def _fold_accents(text: str) -> str:
     )
 
 
-def is_deletion_request(request_text: str) -> bool:
+def is_deletion_request_regex(request_text: str) -> bool:
+    """Deterministic multilingual intent gate (fallback / offline)."""
     text = request_text.lower()
     folded = _fold_accents(text)
     has_deletion = any(
@@ -96,6 +105,27 @@ def is_deletion_request(request_text: str) -> bool:
     return True
 
 
+def is_deletion_request(request_text: str, llm=None) -> bool:
+    """LLM-first intent classification with regex fallback.
+
+    The model returns {DELETION|NOT_DELETION, confidence} only. It does not
+    emit resource_ids or steps_json. On missing key / HTTP / schema failure,
+    falls back to ``is_deletion_request_regex``.
+    """
+    try:
+        from llm import get_llm_client
+    except ImportError:
+        return is_deletion_request_regex(request_text)
+
+    client = llm if llm is not None else get_llm_client()
+    result = client.classify_intent(request_text)
+    if result is not None:
+        if result.confidence < 0.45:
+            return is_deletion_request_regex(request_text)
+        return result.intent == "DELETION"
+    return is_deletion_request_regex(request_text)
+
+
 class DeletionAuditor:
     def __init__(
         self,
@@ -104,12 +134,14 @@ class DeletionAuditor:
         policy: Policy,
         activities: List[dict],
         sample_align: bool = False,
+        llm=None,
     ):
         self.identities = identities
         self.evidence = evidence
         self.policy = policy
         self.activities = activities
         self.sample_align = sample_align
+        self.llm = llm
         self._activity_times = self._index_activity_times()
         self._assigner = GlobalAssigner(
             identities, evidence, activities, policy=policy
@@ -132,11 +164,13 @@ class DeletionAuditor:
 
     def prepare_batch(self, cases: List[dict]) -> None:
         """Run global assignment once for a full case list (sample or full set)."""
-        deletion_cases = [c for c in cases if is_deletion_request(c["request_text"])]
+        deletion_cases = [
+            c for c in cases if is_deletion_request(c["request_text"], llm=self.llm)
+        ]
         self._batch_matches = self._assigner.build_case_matches(deletion_cases)
 
     def audit_case(self, case: dict) -> Tuple[str, List[dict]]:
-        if not is_deletion_request(case["request_text"]):
+        if not is_deletion_request(case["request_text"], llm=self.llm):
             return "NOT_APPLICABLE", []
 
         identity = self.identities.resolve_email(case["email"])
