@@ -1,0 +1,14 @@
+{
+  "requests": 518,
+  "models": {},
+  "cache_hits": {},
+  "total": {
+    "calls": 0,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "tokens": 0,
+    "cost_usd": 0.0,
+    "tokens_per_request": 0.0,
+    "cost_per_request_usd": 0.0
+  }
+}

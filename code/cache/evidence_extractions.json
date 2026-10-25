@@ -1,0 +1,104 @@
+{
+  "_about": "Structured records extracted from screenshot (PNG) and PDF evidence by Claude vision (see code/ghost/extract.py, which regenerates entries with GHOST_VISION_MODEL when ANTHROPIC_API_KEY is set). role=detail marks the record a console's detail panel focuses on; role=row marks list context.",
+  "evidence_04": {"source": "claude-vision", "records": [
+    {"role": "detail", "system_id": "account_service", "resource_id": "account_5762", "category": "USER_PROFILE",
+     "present": true, "exposed": true,
+     "fields": {"full_name": "Haruka Sato", "email": "haruka.s1838@zoho.com", "phone": "+81 90 7610 2507", "customer_reference": "user_11"},
+     "note": "Customer Operations console still shows the live customer profile (Silver tier, last contact 24 Sep 2026)."}
+  ]},
+  "evidence_09": {"source": "claude-vision", "records": [
+    {"role": "detail", "system_id": "search_service", "resource_id": "search_428", "category": "SEARCH_INDEX_ENTRY",
+     "present": true, "exposed": true,
+     "fields": {"display_name": "Gabriel Silva", "email": "g.silva76@gmail.com", "customer_reference": "user_13"},
+     "observed_at": "2026-09-01T06:00:14Z", "note": "customer_directory_v3 hit, last indexed 2026-09-01T05:58:21Z."},
+    {"role": "row", "system_id": "search_service", "resource_id": "search_1874", "category": "SEARCH_INDEX_ENTRY",
+     "present": true, "exposed": true, "fields": {"email": "g.silva76.jr@gmail.com"},
+     "observed_at": "2026-09-01T06:00:14Z"}
+  ]},
+  "evidence_14": {"source": "claude-vision", "records": [
+    {"role": "detail", "system_id": "integration_service", "resource_id": "data_flow_1121", "category": "DATA_FLOW",
+     "present": true, "active": true, "fields": {"customer_email": "jain.aditi@gmail.com"},
+     "note": "Healthy continuous sync to customer_analytics_warehouse; 124 events delivered 07:59:42."},
+    {"role": "row", "system_id": "integration_service", "resource_id": "data_flow_9846", "category": "DATA_FLOW",
+     "present": true, "active": true, "fields": {"customer_email": "lucia-torres@gmail.com"}}
+  ]},
+  "evidence_18": {"source": "claude-vision", "records": [
+    {"role": "detail", "system_id": "export_service", "resource_id": "NST-2026-0718-1842", "category": "USER_EXPORT",
+     "present": true, "exposed": true,
+     "fields": {"full_name": "Ingrid Dahl", "email": "ingrid.dahl@outlook.com", "customer_reference": "user_18"},
+     "note": "Customer statement NST-2026-0718-1842 (order ORD-20261260, delivery address and payment details)."}
+  ]},
+  "evidence_19": {"source": "claude-vision", "records": [
+    {"role": "detail", "system_id": "analytics_platform", "resource_id": "analytics_7438", "category": "ANALYTICS_PROFILE",
+     "present": true, "exposed": true,
+     "fields": {"full_name": "Omar Darwish", "email": "darwish.omar@icloud.com", "customer_reference": "user_20"},
+     "note": "Pulse Analytics user profile still attributable (last activity 13 Jul 2026 14:22 UTC)."}
+  ]},
+  "evidence_23": {"source": "claude-vision", "records": [
+    {"role": "detail", "system_id": "export_service", "resource_id": "export_1260", "category": "USER_EXPORT",
+     "present": true, "exposed": true, "fields": {"owner_email": "ingrid.dahl@outlook.com"},
+     "note": "customer_export_1260.zip Ready for download; expires 25 Jun 2026 06:42 UTC."},
+    {"role": "row", "system_id": "export_service", "resource_id": "export_1261", "category": "USER_EXPORT",
+     "present": true, "exposed": true, "fields": {"owner_email": "marcus.lee@northstar.shop"}},
+    {"role": "row", "system_id": "export_service", "resource_id": "export_1259", "category": "USER_EXPORT",
+     "present": true, "exposed": true, "fields": {"owner_email": "sara.kim@northstar.shop"}},
+    {"role": "row", "system_id": "export_service", "resource_id": "export_1258", "category": "USER_EXPORT",
+     "present": true, "exposed": true, "fields": {"owner_email": "daniel.park@northstar.shop"}}
+  ]},
+  "evidence_27": {"source": "claude-vision", "records": [],
+    "note": "Disputed orders register (ORD-20264118 user_08, ORD-20264207 user_12, ORD-20264319 user_17, ORD-20264402 user_21, ORD-20264511 user_24, ORD-20264600 user_29; retain until 2033). No resource identifiers."},
+  "evidence_28": {"source": "claude-vision", "records": [
+    {"role": "detail", "system_id": "support_platform", "resource_id": "support_1034", "category": "SUPPORT_MESSAGE",
+     "present": true, "exposed": true,
+     "fields": {"requester_name": "Kofi Agyeman", "requester_email": "kagyeman8947@fastmail.com"},
+     "note": "Ticket CS-5034 'Where is my delivery?' - conversation with agent Maya Chen about order ORD-20265034 (shared agent/order context)."}
+  ]},
+  "evidence_32": {"source": "claude-vision", "records": [
+    {"role": "detail", "system_id": "backup_service", "resource_id": "backup_9287", "category": "BACKUP_ARCHIVE",
+     "present": true, "active": true, "fields": {"customer_email": "areed1433@gmail.com"},
+     "note": "Weekly archive segment-42 (eu-west-1), checksum verified, retention end 26 Jul 2026; no restore block shown and recent restores completed."},
+    {"role": "row", "system_id": "backup_service", "resource_id": "backup_9291", "category": "BACKUP_ARCHIVE",
+     "present": true, "active": true, "fields": {"customer_email": "bluepeakco@outlook.com"}},
+    {"role": "row", "system_id": "backup_service", "resource_id": "backup_9288", "category": "BACKUP_ARCHIVE",
+     "present": true, "active": true, "fields": {"customer_email": "miller.logistics@company.com"}},
+    {"role": "row", "system_id": "backup_service", "resource_id": "backup_9286", "category": "BACKUP_ARCHIVE",
+     "present": true, "active": true, "fields": {"customer_email": "summit-retail@company.com"}}
+  ]},
+  "evidence_37": {"source": "claude-vision", "records": [
+    {"role": "detail", "system_id": "security_service", "resource_id": "audit_record_003", "category": "SECURITY_AUDIT_LOG",
+     "present": true, "fields": {"subject_reference": "user_03"}, "observed_at": "2026-08-25T04:03:00Z",
+     "note": "Account closure recorded; signature valid, journal 2026-Q3."},
+    {"role": "row", "system_id": "security_service", "resource_id": "audit_record_002", "category": "SECURITY_AUDIT_LOG", "present": true, "fields": {"subject_reference": "user_03"}},
+    {"role": "row", "system_id": "security_service", "resource_id": "audit_record_001", "category": "SECURITY_AUDIT_LOG", "present": true, "fields": {"subject_reference": "user_03"}},
+    {"role": "row", "system_id": "security_service", "resource_id": "audit_record_006", "category": "SECURITY_AUDIT_LOG", "present": true, "fields": {"subject_reference": "user_03"}},
+    {"role": "row", "system_id": "security_service", "resource_id": "audit_record_005", "category": "SECURITY_AUDIT_LOG", "present": true, "fields": {"subject_reference": "user_03"}},
+    {"role": "row", "system_id": "security_service", "resource_id": "audit_record_004", "category": "SECURITY_AUDIT_LOG", "present": true, "fields": {"subject_reference": "user_03"}}
+  ]},
+  "evidence_42": {"source": "claude-vision", "records": [
+    {"role": "detail", "system_id": "identity_service", "resource_id": "user_17", "category": "ACCOUNT_TOMBSTONE",
+     "present": true, "exposed": false, "fields": {"subject_reference": "user_17"},
+     "note": "Retained customer key referenced by ORD-20263245, CS-3245, CS-3378, FIN-7742; no name, email, phone or hash shown."}
+  ]},
+  "evidence_46": {"source": "claude-vision", "records": [
+    {"role": "detail", "system_id": "object_storage", "resource_id": "delivery_confirmation_19.pdf", "category": "SUPPORT_ATTACHMENT",
+     "present": true, "fields": {},
+     "note": "northstar-customer-data/support-attachments/2026/02, v3 modified 12 Feb 2026 18:42 UTC, uploader support-service."}
+  ]},
+  "evidence_55": {"source": "claude-vision", "records": [
+    {"role": "detail", "system_id": "security_service", "resource_id": "audit_record_003", "category": "SECURITY_AUDIT_LOG",
+     "present": true, "fields": {"subject_reference": "user_03"}, "observed_at": "2026-09-05T06:30:00Z",
+     "note": "Signed compliance journal extract: account closure recorded 25 Aug 2026, retain until 25 Aug 2027."}
+  ]},
+  "evidence_58": {"source": "claude-vision", "records": [
+    {"role": "detail", "system_id": "support_platform", "resource_id": "support_001", "category": "SUPPORT_ATTACHMENT",
+     "present": true, "exposed": true,
+     "fields": {"requester_name": "Priya Raman", "requester_email": "priya.raman@gmail.com", "requester_phone": "+91 98765 73142"},
+     "note": "delivery_address_correction.pdf attached to ticket CS-4827, uploaded by the customer; captured 12 Sep 2026."}
+  ]},
+  "evidence_60": {"source": "claude-vision", "records": [
+    {"role": "detail", "system_id": "marketing_platform", "resource_id": "marketing_001", "category": "MARKETING_PROFILE",
+     "present": true, "exposed": true,
+     "fields": {"full_name": "Soo-jin Park", "email": "sj.park@naver.com", "phone": "+82 10-5837-9451"},
+     "observed_at": "2026-09-15T23:40:00Z", "note": "Live audience profile, email opt-in yes, last refreshed 15 Sep 2026 23:40 UTC."}
+  ]}
+}

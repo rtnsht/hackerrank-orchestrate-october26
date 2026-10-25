@@ -253,9 +253,15 @@ def _load_handover(store: EvidenceStore, fid: str, cap: str, path):
 
 
 def _load_cached_extraction(store: EvidenceStore, fid: str, cap: str, cache: dict):
-    for r in cache.get(fid, {}).get("records", []):
-        o = record_obs(fid, cap, norm_ts(r.get("observed_at")) or cap, r["system_id"], r.get("fields", {}) | {
-            "resource_id": r["resource_id"]}, r.get("source", "image"), category=r.get("category"))
+    """Records extracted from screenshots / PDFs (see ghost/extract.py)."""
+    records = cache.get(fid, {}).get("records", [])
+    detail_subjects = {r.get("fields", {}).get("subject_reference") for r in records if r.get("role") == "detail"}
+    for r in records:
+        subj = r.get("fields", {}).get("subject_reference")
+        if r.get("role") == "row" and subj and subj in detail_subjects:
+            continue  # list context repeating the detailed subject, not a separate finding
+        o = record_obs(fid, cap, norm_ts(r.get("observed_at")) or cap, r["system_id"],
+                       {**r.get("fields", {}), "resource_id": r["resource_id"]}, "extraction", category=r.get("category"))
         if o is None:
             continue
         for k in ("present", "exposed", "active"):
@@ -265,11 +271,31 @@ def _load_cached_extraction(store: EvidenceStore, fid: str, cap: str, cache: dic
 
 
 # ---------------------------------------------------------------- activity
+LINK_RE = re.compile(r"(?:linked|confirmed) (\S+) \(([^)]+)\) (?:to|belongs only to) (\S+) and (user_\d+)")
+
+
 def _load_activity(store: EvidenceStore):
+    """Activity rows are workflow claims; data-catalog rows also give grounded identity links + aliases."""
+    aliases = {}
     with open(DATASET_DIR / "system_activity.csv", encoding="utf-8") as f:
         for row in csv.DictReader(f):
             row["event_time"] = norm_ts(row["event_time"])
             store.activity.append(row)
+            if row["event_type"] == "LINK_RESOURCE_IDENTITY":
+                m = LINK_RE.search(row["details"])
+                if not m:
+                    continue
+                rid, alias, email, uid = m.groups()
+                if alias != rid:
+                    aliases[alias] = rid
+                o = record_obs(row["activity_id"], row["event_time"], row["event_time"], row["target_system"],
+                               {"resource_id": rid, "lookup_key": email.rstrip(";."), "subject_ref": uid},
+                               "catalog_link")
+                o.present = o.exposed = None
+                store.add(o)
+    for o in store.obs:  # resolve display names / file names to catalog resource ids
+        if o.resource_id in aliases:
+            o.resource_id = aliases[o.resource_id]
 
 
 def load_all() -> EvidenceStore:
