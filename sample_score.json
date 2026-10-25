@@ -1,0 +1,25 @@
+{
+  "status_accuracy": 1.0,
+  "status_correct": 32,
+  "status_total": 32,
+  "status_mismatches": [],
+  "step_mismatches": [
+    "case_03",
+    "case_12",
+    "case_17",
+    "case_18",
+    "case_20",
+    "case_22",
+    "case_23",
+    "case_24",
+    "case_25",
+    "case_26",
+    "case_27",
+    "case_28",
+    "case_29",
+    "case_30",
+    "case_31",
+    "case_32"
+  ],
+  "sequence_only_mismatches": []
+}
