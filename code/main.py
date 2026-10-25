@@ -11,9 +11,10 @@ Usage:
   python3 code/main.py
   python3 code/main.py --dataset dataset --output output.csv
 
-LLM (optional):
+LLM (OpenRouter, optional):
   GHOST_DATA_LLM_API_KEY or OPENAI_API_KEY
-  GHOST_DATA_LLM_BASE_URL, GHOST_DATA_LLM_MODEL (default gpt-4o-mini)
+  GHOST_DATA_LLM_BASE_URL (default https://openrouter.ai/api/v1)
+  GHOST_DATA_LLM_MODEL (default openai/gpt-4o-mini)
 """
 
 from __future__ import annotations
@@ -122,15 +123,15 @@ def run(
     llm = reset_llm_client()
     if llm.enabled:
         print(
-            f"LLM intent enabled: provider=openai-compatible model={llm.model} "
+            f"LLM intent enabled: provider={llm.usage.provider} model={llm.model} "
             f"base={llm.base_url}"
         )
         if llm.evidence_assist:
             print("LLM evidence assist ON (GHOST_DATA_LLM_EVIDENCE)")
     else:
         print(
-            "LLM disabled (no API key or GHOST_DATA_LLM_DISABLE); "
-            "using deterministic regex intent fallback"
+            "LLM disabled (no OpenRouter/API key or GHOST_DATA_LLM_DISABLE); "
+            "using deterministic regex intent fallback (0 model calls)"
         )
 
     print(f"Loading identities from {dataset_dir} ...")

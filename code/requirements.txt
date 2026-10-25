@@ -7,9 +7,9 @@ pydantic>=2.0.0
 #            or: GHOST_DATA_OCR=1 python3 code/main.py
 # pillow is not required; tesseract reads image files directly.
 #
-# Optional LLM (OpenAI-compatible HTTP):
+# Optional LLM via OpenRouter (OpenAI-compatible HTTP):
 #   GHOST_DATA_LLM_API_KEY or OPENAI_API_KEY
-#   GHOST_DATA_LLM_BASE_URL (default https://api.openai.com/v1)
-#   GHOST_DATA_LLM_MODEL (default gpt-4o-mini)
+#   GHOST_DATA_LLM_BASE_URL (default https://openrouter.ai/api/v1)
+#   GHOST_DATA_LLM_MODEL (default openai/gpt-4o-mini)
 #   GHOST_DATA_LLM_EVIDENCE=1 to assist messy PDF/text mention extraction
 # Without a key the auditor uses deterministic regex intent fallback.

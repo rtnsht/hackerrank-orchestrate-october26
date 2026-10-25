@@ -4,13 +4,14 @@ Deterministic code still owns identity, evidence grounding, policy, GlobalAssign
 step ordering, and steps_json. The model never invents resource_ids for output and
 never writes steps_json.
 
-Env (secrets never committed):
+Env (secrets never committed; never log key values):
   GHOST_DATA_LLM_API_KEY or OPENAI_API_KEY  — required to enable LLM
-  GHOST_DATA_LLM_BASE_URL                   — default https://api.openai.com/v1
-  GHOST_DATA_LLM_MODEL                      — default gpt-4o-mini
+  GHOST_DATA_LLM_BASE_URL                   — default https://openrouter.ai/api/v1
+  GHOST_DATA_LLM_MODEL                      — default openai/gpt-4o-mini (OpenRouter id)
   GHOST_DATA_LLM_CACHE_DIR                  — default <code>/.cache/llm
   GHOST_DATA_LLM_EVIDENCE                   — 1/true to assist messy PDF/text snippets
   GHOST_DATA_LLM_DISABLE                    — 1/true force regex-only even if key set
+  GHOST_DATA_LLM_HTTP_REFERER / GHOST_DATA_LLM_APP_TITLE — optional OpenRouter headers
 """
 
 from __future__ import annotations
@@ -26,9 +27,12 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
-# Approximate gpt-4o-mini list prices (USD / 1M tokens) for usage reports.
+# Approximate OpenRouter list prices for openai/gpt-4o-mini (USD / 1M tokens).
+# Used only for estimated-cost reporting; adjust if GHOST_DATA_LLM_MODEL changes.
 _DEFAULT_INPUT_COST_PER_M = 0.15
 _DEFAULT_OUTPUT_COST_PER_M = 0.60
+_DEFAULT_BASE_URL = "https://openrouter.ai/api/v1"
+_DEFAULT_MODEL = "openai/gpt-4o-mini"
 
 INTENT_SYSTEM = """You classify privacy/support request messages for a commerce platform.
 Decide whether the writer is authorizing account/personal-data DELETION.
@@ -216,12 +220,12 @@ class LLMClient:
         self.base_url = (
             base_url
             or os.environ.get("GHOST_DATA_LLM_BASE_URL", "").strip()
-            or "https://api.openai.com/v1"
+            or _DEFAULT_BASE_URL
         ).rstrip("/")
         self.model = (
             model
             or os.environ.get("GHOST_DATA_LLM_MODEL", "").strip()
-            or "gpt-4o-mini"
+            or _DEFAULT_MODEL
         )
         disabled = _truthy(os.environ.get("GHOST_DATA_LLM_DISABLE"))
         self.enabled = bool(self.api_key) and not disabled
@@ -233,8 +237,20 @@ class LLMClient:
         self.cache_dir = Path(env_cache) if env_cache else default_cache
         self.timeout_s = timeout_s
         self._http_post = http_post  # injectable for tests
+        self.http_referer = os.environ.get("GHOST_DATA_LLM_HTTP_REFERER", "").strip()
+        self.app_title = (
+            os.environ.get("GHOST_DATA_LLM_APP_TITLE", "").strip()
+            or "Ghost Data Still Exists"
+        )
+        provider = "none"
+        if self.enabled:
+            provider = (
+                "openrouter"
+                if "openrouter.ai" in self.base_url
+                else "openai-compatible"
+            )
         self.usage = UsageStats(
-            provider="openai-compatible" if self.enabled else "none",
+            provider=provider,
             model=self.model if self.enabled else "",
         )
         if self.enabled:
@@ -445,6 +461,12 @@ class LLMClient:
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
         }
+        # OpenRouter optional ranking / app attribution headers (no secrets).
+        if "openrouter.ai" in self.base_url:
+            if self.http_referer:
+                headers["HTTP-Referer"] = self.http_referer
+            if self.app_title:
+                headers["X-Title"] = self.app_title
         try:
             if self._http_post is not None:
                 status, resp_json = self._http_post(url, headers, body)
@@ -538,25 +560,39 @@ def reset_llm_client(client: Optional[LLMClient] = None) -> LLMClient:
 def write_usage_markdown(path: Path, stats: UsageStats, *, extra_notes: str = "") -> None:
     """Write evaluation/usage_report.md from a completed run."""
     d = stats.as_dict()
-    req_note = (
-        "Set `GHOST_DATA_LLM_API_KEY` (or `OPENAI_API_KEY`) to enable live calls. "
-        "Without a key the pipeline uses the deterministic regex intent fallback."
-    )
+    live = d["call_count"] > 0
+    if live:
+        status_blurb = (
+            "Live OpenRouter path was exercised; totals below are measured "
+            "(uncached API calls only; cache hits are listed separately)."
+        )
+    else:
+        status_blurb = (
+            "LLM path was **not** exercised this run (no API key / disabled / all "
+            "fallback). Totals below are genuine zeros — **do not invent** token "
+            "counts. Re-run with `GHOST_DATA_LLM_API_KEY` to fill real usage."
+        )
     lines = [
         "# Usage Report — Ghost Data Still Exists",
         "",
         "## Scope",
         "",
         "- Full run: `dataset/deletion_requests.csv` → root `output.csv` (518 rows).",
-        "- Intent classification prefers an OpenAI-compatible LLM; regex is the fallback.",
+        "- Intent classification prefers **OpenRouter** (OpenAI-compatible); regex is the fallback.",
         "- Deterministic core still owns identity, evidence grounding, policy,",
         "  GlobalAssigner, step ordering, and `steps_json` emission.",
+        "",
+        "## Runtime status",
+        "",
+        status_blurb,
         "",
         "## Model providers and names",
         "",
         "| Provider | Model | Role |",
         "| --- | --- | --- |",
         f"| {d['provider']} | {d['model'] or 'n/a'} | Intent (+ optional evidence assist) |",
+        "",
+        f"Configured defaults: base `{_DEFAULT_BASE_URL}`, model `{_DEFAULT_MODEL}`.",
         "",
         "## Model-call counts",
         "",
@@ -582,18 +618,23 @@ def write_usage_markdown(path: Path, stats: UsageStats, *, extra_notes: str = ""
         "## Cost assumptions",
         "",
         f"- Input ${_DEFAULT_INPUT_COST_PER_M}/1M tokens, output ${_DEFAULT_OUTPUT_COST_PER_M}/1M tokens",
-        "  (gpt-4o-mini list pricing; adjust if using another model).",
+        f"  (OpenRouter `{_DEFAULT_MODEL}` list pricing estimate; adjust if model changes).",
         "",
         "## Environment",
         "",
-        "- `GHOST_DATA_LLM_API_KEY` or `OPENAI_API_KEY`",
-        "- `GHOST_DATA_LLM_BASE_URL` (default `https://api.openai.com/v1`)",
-        "- `GHOST_DATA_LLM_MODEL` (default `gpt-4o-mini`)",
+        "- Provider: **OpenRouter** (OpenAI-compatible HTTP)",
+        "- `GHOST_DATA_LLM_API_KEY` or `OPENAI_API_KEY` (never commit / never log)",
+        f"- `GHOST_DATA_LLM_BASE_URL` (default `{_DEFAULT_BASE_URL}`)",
+        f"- `GHOST_DATA_LLM_MODEL` (default `{_DEFAULT_MODEL}`)",
         "- `GHOST_DATA_LLM_CACHE_DIR` (default `code/.cache/llm`)",
         "- `GHOST_DATA_LLM_EVIDENCE=1` optional PDF/text mention assist",
         "- `GHOST_DATA_LLM_DISABLE=1` force regex-only",
         "",
-        req_note,
+        "## Keyed re-run recipe",
+        "",
+        "```bash",
+        "export GHOST_DATA_LLM_API_KEY && python3 -m pip install -q -r code/requirements.txt && python3 code/main.py --sample && python3 code/main.py && echo \"OK: sample_score.json + output.csv + code/evaluation/usage_report.md refreshed\"",
+        "```",
         "",
     ]
     if extra_notes:

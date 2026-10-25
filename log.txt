@@ -260,3 +260,27 @@ branch=grokbot-llm-01
 repo_root=/workspace
 worktree=/workspace
 parent_agent=none
+
+## [2026-10-25T12:04:00Z] OpenRouter defaults + keyed re-run recipe
+
+User Prompt (verbatim, secrets redacted):
+Provider confirmed: **OpenRouter** (OpenAI-compatible).
+Defaults: GHOST_DATA_LLM_BASE_URL=https://openrouter.ai/api/v1, model openai/gpt-4o-mini.
+No API key in VM — implement client, mock tests, fallback sample+full, honest usage zeros, PR with OpenRouter README + one-command keyed recipe.
+
+Agent Response Summary:
+Switched LLM defaults to OpenRouter base URL and model id openai/gpt-4o-mini; documented env and keyed re-run recipe. Re-ran 9 unit tests and sample/full on regex fallback (32/32, 30/32; 518 rows; N/A=7). usage_report.md states LLM path was not exercised and keeps genuine zero token counts. Updated PR #2.
+
+Actions:
+* Updated code/llm.py defaults, OpenRouter headers, usage markdown writer
+* Updated README.md, requirements.txt, evaluation reports, tests
+* Ran unittest + sample + full 518 fallback
+* Commit/push grokbot-llm-01; update PR #2
+
+Context:
+tool=Cursor Cloud Agent
+model=cursor-grok-4.5-high-fast
+branch=grokbot-llm-01
+repo_root=/workspace
+worktree=/workspace
+parent_agent=none

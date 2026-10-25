@@ -69,6 +69,12 @@ class TestLLMClientMock(unittest.TestCase):
         self.tmp.cleanup()
         reset_llm_client(LLMClient(api_key="", cache_dir=self.cache))
 
+    def test_openrouter_defaults(self):
+        client = LLMClient(api_key="test-key", cache_dir=self.cache)
+        self.assertEqual(client.base_url, "https://openrouter.ai/api/v1")
+        self.assertEqual(client.model, "openai/gpt-4o-mini")
+        self.assertEqual(client.usage.provider, "openrouter")
+
     def test_disabled_without_key(self):
         client = LLMClient(api_key="", cache_dir=self.cache)
         self.assertFalse(client.enabled)
@@ -82,7 +88,10 @@ class TestLLMClientMock(unittest.TestCase):
         def fake_post(url, headers, body):
             calls["n"] += 1
             self.assertIn("/chat/completions", url)
+            self.assertTrue(url.startswith("https://openrouter.ai/api/v1/"))
             self.assertEqual(headers.get("Authorization"), "Bearer test-key")
+            self.assertEqual(headers.get("X-Title"), "Ghost Data Still Exists")
+            self.assertEqual(body.get("model"), "openai/gpt-4o-mini")
             return 200, {
                 "choices": [
                     {
@@ -98,10 +107,12 @@ class TestLLMClientMock(unittest.TestCase):
 
         client = LLMClient(
             api_key="test-key",
-            model="gpt-4o-mini",
+            model="openai/gpt-4o-mini",
+            base_url="https://openrouter.ai/api/v1",
             cache_dir=self.cache,
             http_post=fake_post,
         )
+        self.assertEqual(client.usage.provider, "openrouter")
         r1 = client.classify_intent(
             "I am not asking for deletion; just stop promotional emails."
         )

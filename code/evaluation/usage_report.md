@@ -3,15 +3,21 @@
 ## Scope
 
 - Full run: `dataset/deletion_requests.csv` → root `output.csv` (518 rows).
-- Intent classification prefers an OpenAI-compatible LLM; regex is the fallback.
+- Intent classification prefers **OpenRouter** (OpenAI-compatible); regex is the fallback.
 - Deterministic core still owns identity, evidence grounding, policy,
   GlobalAssigner, step ordering, and `steps_json` emission.
+
+## Runtime status
+
+LLM path was **not** exercised this run (no API key / disabled / all fallback). Totals below are genuine zeros — **do not invent** token counts. Re-run with `GHOST_DATA_LLM_API_KEY` to fill real usage.
 
 ## Model providers and names
 
 | Provider | Model | Role |
 | --- | --- | --- |
 | none | n/a | Intent (+ optional evidence assist) |
+
+Configured defaults: base `https://openrouter.ai/api/v1`, model `openai/gpt-4o-mini`.
 
 ## Model-call counts
 
@@ -37,18 +43,23 @@
 ## Cost assumptions
 
 - Input $0.15/1M tokens, output $0.6/1M tokens
-  (gpt-4o-mini list pricing; adjust if using another model).
+  (OpenRouter `openai/gpt-4o-mini` list pricing estimate; adjust if model changes).
 
 ## Environment
 
-- `GHOST_DATA_LLM_API_KEY` or `OPENAI_API_KEY`
-- `GHOST_DATA_LLM_BASE_URL` (default `https://api.openai.com/v1`)
-- `GHOST_DATA_LLM_MODEL` (default `gpt-4o-mini`)
+- Provider: **OpenRouter** (OpenAI-compatible HTTP)
+- `GHOST_DATA_LLM_API_KEY` or `OPENAI_API_KEY` (never commit / never log)
+- `GHOST_DATA_LLM_BASE_URL` (default `https://openrouter.ai/api/v1`)
+- `GHOST_DATA_LLM_MODEL` (default `openai/gpt-4o-mini`)
 - `GHOST_DATA_LLM_CACHE_DIR` (default `code/.cache/llm`)
 - `GHOST_DATA_LLM_EVIDENCE=1` optional PDF/text mention assist
 - `GHOST_DATA_LLM_DISABLE=1` force regex-only
 
-Set `GHOST_DATA_LLM_API_KEY` (or `OPENAI_API_KEY`) to enable live calls. Without a key the pipeline uses the deterministic regex intent fallback.
+## Keyed re-run recipe
+
+```bash
+export GHOST_DATA_LLM_API_KEY && python3 -m pip install -q -r code/requirements.txt && python3 code/main.py --sample && python3 code/main.py && echo "OK: sample_score.json + output.csv + code/evaluation/usage_report.md refreshed"
+```
 
 ## Notes
 

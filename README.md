@@ -36,20 +36,32 @@ python3 code/main.py
 
 Reads `dataset/deletion_requests.csv` and writes root `output.csv` (518 rows, sorted by `case_id`).
 
-### LLM intent (OpenAI-compatible, optional)
+### LLM intent (OpenRouter, OpenAI-compatible)
 
-Set an API key to classify `request_text` with a real model at runtime. Without a key the pipeline still runs via deterministic regex fallback.
+Provider: **OpenRouter**. Set an API key to classify `request_text` with a real model at runtime. Without a key the pipeline still runs via deterministic regex fallback (0 model calls — do not invent token counts).
+
+| Variable | Default |
+| --- | --- |
+| `GHOST_DATA_LLM_API_KEY` (or `OPENAI_API_KEY`) | _(required to enable LLM; never commit/log)_ |
+| `GHOST_DATA_LLM_BASE_URL` | `https://openrouter.ai/api/v1` |
+| `GHOST_DATA_LLM_MODEL` | `openai/gpt-4o-mini` |
+| `GHOST_DATA_LLM_EVIDENCE` | off (`1` enables grounded PDF/text assist) |
+| `GHOST_DATA_LLM_DISABLE` | off (`1` forces regex-only) |
 
 ```bash
-export GHOST_DATA_LLM_API_KEY="sk-..."   # or OPENAI_API_KEY
-# optional:
-# export GHOST_DATA_LLM_BASE_URL="https://api.openai.com/v1"
-# export GHOST_DATA_LLM_MODEL="gpt-4o-mini"
-# export GHOST_DATA_LLM_EVIDENCE=1        # assist messy PDF/text mention extraction
-# export GHOST_DATA_LLM_DISABLE=1        # force regex-only even if a key is set
+export GHOST_DATA_LLM_API_KEY="sk-or-..."   # OpenRouter key; or OPENAI_API_KEY
+# defaults already point at OpenRouter — override only if needed:
+# export GHOST_DATA_LLM_BASE_URL="https://openrouter.ai/api/v1"
+# export GHOST_DATA_LLM_MODEL="openai/gpt-4o-mini"
 
 python3 code/main.py --sample
 python3 code/main.py
+```
+
+**One-command keyed re-run** (on a machine that has the secret; refreshes sample score, full `output.csv`, and `usage_report.md`):
+
+```bash
+export GHOST_DATA_LLM_API_KEY && python3 -m pip install -q -r code/requirements.txt && python3 code/main.py --sample && python3 code/main.py && echo "OK: sample_score.json + output.csv + code/evaluation/usage_report.md refreshed"
 ```
 
 Responses are schema-validated (pydantic). Failures fall back to regex. Intent results are cached under `code/.cache/llm` (gitignored) by request-text hash. The LLM never invents `resource_id`s and never writes `steps_json`.
@@ -68,7 +80,7 @@ python3 code/main.py --sample --ocr-images   # or: GHOST_DATA_OCR=1 python3 code
 
 Requires system `tesseract` on PATH. OCR uses line-local identifier binding so multi-customer screenshots do not cross-attach emails.
 
-Architecture: deterministic Python owns identity, `audit_at` cutoffs, `deletion_rules`, GlobalAssigner, step ordering, and CSV output. An OpenAI-compatible LLM classifies deletion intent (regex fallback) and may optionally ground-assist messy PDF/text mentions. Structured JSON/SQL/log evidence stays parser-driven.
+Architecture: deterministic Python owns identity, `audit_at` cutoffs, `deletion_rules`, GlobalAssigner, step ordering, and CSV output. OpenRouter (`openai/gpt-4o-mini` by default) classifies deletion intent with regex fallback and may optionally ground-assist messy PDF/text mentions. Structured JSON/SQL/log evidence stays parser-driven.
 
 
 ## Dataset

@@ -6,8 +6,8 @@
 - Modes:
   - Sample: `dataset/sample_deletion_requests.csv` (32) vs `sample_output.csv`
   - Full: `dataset/deletion_requests.csv` (518) → root `output.csv`
-- Pipeline: deterministic Python core + OpenAI-compatible LLM intent (`code/llm.py`)
-- This cloud VM run: **no API key** → regex intent fallback (0 model calls). Live LLM path covered by mocked unit tests.
+- Pipeline: deterministic Python core + **OpenRouter** intent (`code/llm.py`, default model `openai/gpt-4o-mini`)
+- This cloud VM run: **no API key** (secret forwarding disabled) → regex intent fallback (**0** model calls; usage zeros are real, not invented). Live LLM path covered by mocked unit tests.
 
 ## Sample scores (public gold)
 
@@ -24,7 +24,7 @@ No regression under `--sample` (sample_align on). Residual exact-step gap remain
 
 | Path | Behavior |
 | --- | --- |
-| API key set | `POST {BASE}/chat/completions` with JSON-schema intent `{DELETION\|NOT_DELETION, confidence}`; pydantic validate; disk cache by text hash |
+| API key set | OpenRouter `POST {BASE}/chat/completions` (default base `https://openrouter.ai/api/v1`, model `openai/gpt-4o-mini`) with JSON-schema intent `{DELETION\|NOT_DELETION, confidence}`; pydantic validate; disk cache by text hash |
 | No key / HTTP error / schema fail | `is_deletion_request_regex` |
 | LLM role | Intent only (optional grounded evidence mention assist). Never emits `steps_json` or ungounded `resource_id`s |
 
@@ -83,16 +83,15 @@ Covers: regex multilingual + negation, mocked HTTP success/cache, schema failure
 2. Replication drift (primary absent / replica present).
 3. Non-deletion / negated deletion → `NOT_APPLICABLE` (now 7 on full set including marketing opt-out and access-copy refusals).
 
-## Follow-up for non-zero model usage
+## Follow-up for non-zero model usage (OpenRouter)
 
-With `GHOST_DATA_LLM_API_KEY` set, re-run:
+On a machine where the OpenRouter key is available (one command):
 
 ```bash
-python3 code/main.py --sample
-python3 code/main.py
+export GHOST_DATA_LLM_API_KEY && python3 -m pip install -q -r code/requirements.txt && python3 code/main.py --sample && python3 code/main.py && echo "OK: sample_score.json + output.csv + code/evaluation/usage_report.md refreshed"
 ```
 
-Then refresh `code/evaluation/usage_report.md` / root `output.csv` from that live run. Expected: non-zero `call_count` and tokens; sample status still 32/32; exact steps ≥29/32 (prefer 30/32).
+Expected: non-zero `call_count` and tokens in `usage_report.md`; sample status still 32/32; exact steps ≥29/32 (prefer 30/32). Never invent token counts when the key is absent.
 
 ## Known limitations
 
