@@ -15,8 +15,8 @@ const DELETION_PATTERNS: RegExp[] = [
   /\b(delet(e|ed|es|ing|ion)|eras(e|ed|ing|ure)|right to be forgotten|wipe|purge)\b/i,
   /\b(remov(e|ed|ing)|clos(e|ed|ing)|get rid of)\b[^.?!]{0,60}\b(account|profile|personal (data|details|information)|records?|search result|copy|copies|traces|data)\b/i,
   /\b(account|profile)\b[^.?!]{0,80}\b(closed|removed|gone|deleted)\b/i,
-  /\b(eliminar|eliminación|elimine|borrar|supresión)\b/i, // es
-  /\b(exclusão|excluir|apagar|eliminação)\b/i, // pt
+  /\b(eliminar|eliminación|elimine|eliminen|borrar|borre|borren|supresión|suprimir)\b/i, // es
+  /\b(exclusão|excluir|excluam|apagar|apaguem|eliminação)\b/i, // pt
   /\b(suppression|supprimer|effacer|effacement)\b/i, // fr
   /\b(löschen|löschung|entfernen)\b/i, // de
   /삭제|탈퇴/, // ko
@@ -36,6 +36,14 @@ const NEGATION_PATTERNS: RegExp[] = [
   /\bcontinue using the service\b/i,
   /\bI still (use|need|want) (it|the account|my account|receipts)/i,
   /\bmarketing lists only\b/i,
+  // multilingual "do not delete / keep my account"
+  /\bno (borren|borres|eliminen|elimines|cierren|cierres|supriman)\b|\bsin (borrar|eliminar)\b|\bmantener (mi|la) cuenta\b/i, // es
+  /\bnão (excluam|exclua|apaguem|apague|encerrem|excluir|apagar)\b|\bmanter (minha|a) conta\b/i, // pt
+  /\bne (supprimez|supprimer|fermez|effacez) pas\b|\bne pas (supprimer|fermer|effacer)\b|\bgarder mon compte\b/i, // fr
+  /\bnicht löschen\b|\bkein(e)? löschung\b/i, // de
+  /(삭제|탈퇴)(하지|는 하지)\s*(마|말)|(삭제|탈퇴)(를|는)?\s*원하지 않/, // ko
+  /(削除|退会)(しないで|はしないで|は不要|を希望しません)|(削除|退会)しないでください/, // ja
+  /(不要|请勿|不要求)(删除|注销)/, // zh
 ];
 
 const NON_DELETION_TYPES: [string, RegExp][] = [

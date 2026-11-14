@@ -100,3 +100,43 @@ branch=freshbuild-mastraai-101
 repo_root=/home/user/hackerrank-orchestrate-october26
 worktree=main
 parent_agent=workflow orchestration script
+
+## [2026-11-14T00:00:00Z] Sub-agent audit of case_45, case_46, case_50 (read-only)
+
+User Prompt (verbatim, secrets redacted):
+there should not be any code in python, as everything is in mastra which is typescript. Pls note
+
+Agent Response Summary:
+Workflow sub-agent investigated dataset evidence for case_45, case_46 and case_50 using shell tools only (grep, pdftotext, node one-liners in scratchpad; no Python code written, no project code read or run). Resolved subjects user_03, user_17, user_20 and derived expected steps from screenshots, PDFs, readback logs and data-catalog links captured before audit_at. Returned results to the orchestrator via structured output; no dataset or code files modified.
+
+Actions:
+* Read problem_statement.md, sample files, deletion_rules.csv, evidence manifest and relevant evidence files
+* Viewed evidence_37, evidence_42, evidence_19 screenshots; extracted evidence_55 PDF text
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5
+branch=freshbuild-mastraai-101
+repo_root=/home/user/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=workflow orchestration script
+
+## [2026-11-14T00:00:00Z] Sub-agent audit of case_53, case_55, case_63
+
+User Prompt (verbatim, secrets redacted):
+there should not be any code in python, as everything is in mastra which is typescript. Pls note
+
+Agent Response Summary:
+Workflow sub-agent investigated case_53, case_55 and case_63 using shell tools (grep/jq/node one-liners) over dataset/ only; no project code read or run and no Python written. Derived expected steps from evidence captured at or before each audit_at (support_1034 screenshot, backup_9287 restore console, marketing_001 console) and returned results via structured output.
+
+Actions:
+* grep/jq over dataset/system_activity.csv, user_identities.csv, evidence/
+* Read evidence images/PDFs (support_ticket_console_20260524.png, backup_restore_console_20260429.png, marketing_profile_console.png)
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5
+branch=freshbuild-mastraai-101
+repo_root=/home/user/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=workflow orchestration script

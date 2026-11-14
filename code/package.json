@@ -8,6 +8,7 @@
     "start": "tsx src/main.ts",
     "audit": "tsx src/main.ts",
     "evaluate": "tsx evaluation/evaluate.ts",
+    "samples": "tsx src/main.ts --samples",
     "extract-media": "tsx src/scripts/extract-media.ts",
     "typecheck": "tsc --noEmit"
   },

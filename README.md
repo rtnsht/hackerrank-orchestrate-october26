@@ -1,157 +1,119 @@
-# HackerRank Orchestrate - October 2026
+# Ghost Data Still Exists — Mastra Deletion-Audit Agent
 
-## Ghost Data Still Exists
+HackerRank Orchestrate (October 2026). For every request in `dataset/deletion_requests.csv` the agent decides whether
+deletion was actually requested, reconstructs who the person is (current **and** historical identifiers), finds every
+record, data flow and backup that still ties to them, rebuilds each record's state at `audit_at` from evidence (never
+from workflow claims), applies `dataset/deletion_rules.csv`, and emits `COMPLETE` / `INCOMPLETE` / `NOT_APPLICABLE`
+with an ordered `FINDING → REMEDIATION → VERIFICATION` plan in `output.csv`.
 
-Build an AI agent that audits whether a user's personal data was actually deleted.
-
-A deletion workflow may report **Complete** while data still exists in databases, logs, support attachments, exports, search indexes, archives, or backups. Sync and restore processes may also bring deleted data back.
-
-For each request, the agent must first determine whether deletion was actually requested. It then returns `COMPLETE`, `INCOMPLETE`, or `NOT_APPLICABLE`, reports any remaining data or recreation risk, and produces the ordered remediation and verification steps required to finish an authorized deletion safely.
-
-Read [`problem_statement.md`](./problem_statement.md) for the complete challenge contract.
+The whole solution is **TypeScript on [Mastra](https://mastra.ai)** (`@mastra/core` agents, tools and workflows). The
+challenge contract is in [`problem_statement.md`](./problem_statement.md); agent-session rules are in
+[`AGENTS.md`](./AGENTS.md).
 
 ---
 
-## Quick Start
+## Quick start
 
-Clone the repository and move into the project directory:
+### Requirements
 
-```bash
-git clone https://github.com/interviewstreet/hackerrank-orchestrate-october26.git
-cd hackerrank-orchestrate-october26
-```
+- Node.js **22.13+** (uses the built-in `node:sqlite` to execute the SQL snapshot exports)
+- npm (packages are installed from the npm registry; no other downloads — the OCR language model ships as an npm package)
 
-Start your AI coding tool from the **repository root** so it automatically reads [`AGENTS.md`](./AGENTS.md) and logs your session turns to `log.txt` in the root directory.
-
-Build your solution in `code/main.py`, or use another language and document its setup and run command clearly in your README.
-
-Your solution must:
-
-- Read the input files from `dataset/`
-- Generate one prediction row for every request in `dataset/deletion_requests.csv`
-- Write the final predictions to `output.csv` in the repository root
-
-Run the starter Python entry point with:
+### Install and run
 
 ```bash
-python3 code/main.py
+cd code
+npm install
+npm start
 ```
 
-The blank template at `dataset/output.csv` is provided as a reference. Your final generated file for submission must be the root-level `output.csv`.
+`npm start` audits all 518 requests through the Mastra workflow and writes **`output.csv` at the repository root**
+(header `case_id,deletion_status,steps_json`, one row per case, sorted by case number). It validates every row against
+the output contract (exits non-zero on any violation) and regenerates `code/evaluation/usage_report.md` for that run.
+A full run takes a few seconds (first run ~30 s extra if the OCR cache is missing).
 
+### Other commands
 
-## Dataset
-
-All participant-facing files are in `dataset/`:
-
-| File | Contents |
+| Command (inside `code/`) | What it does |
 | --- | --- |
-| `deletion_requests.csv` | 518 requests |
-| `sample_deletion_requests.csv` | 32 sample requests |
-| `sample_output.csv` | Correct sample answers |
-| `user_identities.csv` | Current user identities |
-| `user_audit_log.csv` | Historical identity changes |
-| `system_activity.csv` | Activity across services and data processes |
-| `deletion_rules.csv` | Required treatment for each data category |
-| `evidence_files.csv` | Manifest of supplied evidence files |
-| `output.csv` | Blank output template |
+| `npm run samples` | Runs the 32 public sample requests (predictions in `code/.runs/`) |
+| `npm run evaluate` | Scores samples against `dataset/sample_output.csv` and the participant-created cases, rewrites the metrics block of `code/evaluation/evaluation_report.md` |
+| `npm start -- --trace .runs/trace.jsonl` | Also writes a per-case explanation trace (linked records, link evidence, state evidence, rule applied) |
+| `npm run typecheck` | `tsc --noEmit` over the project |
 
-Evidence is stored under `dataset/evidence/` and may include PDFs, images, logs, JSON, plain text, or SQL snapshot exports. SQL captures may contain a primary database, regional replicas, a reporting replica, or a failover replica so replication drift can be investigated directly. The `.sql` files are readable as text and executable with SQLite.
+### Optional LLM agents (environment variables only — never commit keys)
 
-Only `deletion_requests.csv` requires answers. The other files provide evidence and context.
+The decision engine is deterministic and needs **no API key**. Mastra LLM agents are switched on automatically when a
+provider key is present in the environment (or an uncommitted `.env` loaded by your shell):
+
+| Variable | Effect |
+| --- | --- |
+| `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`, …) | enables the intent agent and the screenshot/PDF vision agent for that provider |
+| `AUDIT_MODEL`, `AUDIT_INTENT_MODEL`, `AUDIT_VISION_MODEL`, `AUDIT_REVIEW_MODEL` | Mastra model ids, default `anthropic/claude-haiku-5-5` (intent) and `anthropic/claude-sonnet-5-5` (vision, reviewer) |
+| `AUDIT_LLM=off` | force the deterministic path even if a key is set |
+| `AUDIT_LLM_VISION=0` | keep OCR rules for screenshots/PDFs while using the intent agent |
+| `AUDIT_LLM_REVIEW=1` | run the reviewer agent; its concerns are attached to the trace (never to the submitted steps) |
+| `DATASET_DIR` | audit a different dataset directory with the same layout (used by the custom evaluation cases) |
 
 ---
 
-## Output
-
-Create `output.csv` with these columns in this exact order:
+## Architecture
 
 ```text
-case_id,deletion_status,steps_json
+deletion_requests.csv ──► Mastra workflow "deletion-audit" (one run per request)
+                            1 classify-intent      intent agent (LLM, optional) + multilingual rules
+                            2 resolve-identity     current snapshot + user_audit_log history
+                            3 discover-resources   identifier matching, trace correlation, catalog links,
+                                                   source-record refs, deletion-worker batch reconciliation
+                            4 reconstruct-state    point-in-time state at audit_at from evidence (claims ignored)
+                                                   + deletion_rules.csv policy
+                            5 plan-steps           ordered findings / remediation / verification + contract check
+                                    │
+evidence/ (SQL, JSON, logs, txt, PDF, PNG) ──► evidence index (normalised observations + snapshot scopes)
 ```
 
-Produce exactly one row per request. `deletion_status` is `COMPLETE`, `INCOMPLETE`, or `NOT_APPLICABLE`. `steps_json` is an ordered JSON array containing findings, remediation actions, and verification checks. Use an empty array (`[]`) for `NOT_APPLICABLE`. Evidence references may be a `file_id`, `activity_id`, or `audit_id`. Determine the resource state at `audit_at` from the available evidence; reported workflow statuses and operation results are claims. Use `dataset/sample_output.csv` as the format reference.
-
-The final file must contain 518 data rows sorted by `case_id` (plus the header row). The grader parses `steps_json` as JSON, so object-key order and whitespace do not matter; array order does. Order findings, remediation, and verification in that phase order. Within a phase, follow the operation order in the problem statement, then sort by `system_id` and `resource_id`.
-
----
-
-## Evaluation
-
-`output.csv` will be compared with hidden canonical answers. Scoring considers:
-
-- deletion assessment accuracy;
-- current and historical identity resolution;
-- discovery of remaining data and recreation risks;
-- correct policy application and evidence references; and
-- completeness and ordering of remediation and verification steps.
-
-Your `code.zip` must include:
-
-```text
-code/evaluation/evaluation_report.md
-code/evaluation/usage_report.md
-```
-
-- `evaluation_report.md` must cover case, row, field, and sequence accuracy, at least three additional evaluation cases created by you, failures found, and improvements made.
-- `usage_report.md` must cover the final full-dataset run, including model providers and names, model calls, input and output tokens, total and average tokens per request, and estimated total and per-request cost. Include per-model and overall totals when using multiple models.
-
-**Important:** Place `evaluation_report.md` and `usage_report.md` inside `code/evaluation/` (matching `code/evaluation/main.py` in this starter layout), write your complete evaluation metrics, custom evaluation test cases, and token/cost breakdowns directly inside those Markdown files, and keep prompts in source code or Markdown files. Automated code evaluation ignores raw data files (`.csv`, `.tsv`, `.json`, `.jsonl`, `.sql`, `.log`), so content stored only in those formats will not be visible to the code judge or AI interviewer.
-
----
-
-## Chat Transcript
-
-This repository includes [`AGENTS.md`](./AGENTS.md), which instructs compatible AI coding tools to append conversation summaries to `log.txt` in the repository root:
-
-| Platform | Path |
+| Layer | Files |
 | --- | --- |
-| macOS / Linux | `<repo root>/log.txt` |
-| Windows | `<repo root>\log.txt` |
+| Mastra instance, agents, prompts | `code/src/mastra/index.ts`, `code/src/mastra/agents/index.ts`, `code/src/mastra/prompts/*.md` |
+| Mastra tools (one per audit stage) | `code/src/mastra/tools/audit-tools.ts` |
+| Mastra workflow | `code/src/mastra/workflows/deletion-audit-workflow.ts` |
+| Evidence parsers | `code/src/core/evidence/` — `structured.ts` (SQL via `node:sqlite`, JSON bundles/exports/record lists, handover text), `logs.ts` (six log dialects, trace-id correlation), `media.ts` (pdf-parse, tesseract.js OCR with upscaling, screen-aware interpretation), `records.ts` (record → state) |
+| Identity, linking, state, policy, plan | `code/src/core/identity.ts`, `audit.ts`, `reconcile.ts`, `policy.ts`, `validate.ts` |
+| CLI and reports | `code/src/main.ts`, `code/src/report/usage-report.ts` |
+| Evaluation | `code/evaluation/evaluate.ts`, `score.ts`, `custom-cases.ts`, `evaluation_report.md`, `usage_report.md` |
 
-- Always launch your AI coding agent from the repository root (or explicitly ask it to read `./AGENTS.md` first) so every turn is logged to `log.txt` with the required `User Prompt`, `Agent Response Summary`, `Actions`, and `Context` sections.
-- Upload `log.txt` directly as your `chat_transcript` submission on HackerRank.
-- Do not include API keys, tokens, credentials, or secrets in prompts, code, configuration, or `log.txt`.
+### Key decisions
+
+- **Evidence over claims.** `reported_status`, deletion-worker results, sync and index activity are claims. State comes
+  from snapshots, lookups, logs, screenshots and documents; only explicit checks (connector checks, restore-access
+  checks, restore jobs) are treated as observations.
+- **Point in time.** State uses only evidence items captured by `audit_at` and observed after `requested_at`; later
+  exports may still *attribute* a record to the subject (ownership is time-invariant) but never decide its state and
+  are never cited.
+- **Copies count.** A record present in any replica / failover / regional copy is a remaining record (replication drift).
+- **Enumerating snapshots prove absence** only for records with no explicit post-request sighting, preferring snapshots
+  that compare more copies.
+- **Identifier-less records** (an anonymised analytics profile, a primary profile looked up by id only) are attributed by
+  reconciling the deletion-worker batch around `reported_at`, excluding anything other evidence ties to someone else.
+- **Policy** is read from `deletion_rules.csv`; retained records (security audit within retention, active legal holds)
+  are verified present; tombstones keep only the stable `user_id`.
+
+See `code/evaluation/evaluation_report.md` for metrics, custom cases, failures found and improvements made, and
+`code/evaluation/usage_report.md` for token usage and cost.
 
 ---
 
-## Packaging `code.zip` and Submission
+## Packaging the submission
 
-| Item | Description |
-| --- | --- |
-| `code.zip` | Runnable solution, prompts, configuration, `README.md`, and `evaluation/` reports |
-| `output.csv` | One answer row for each of the 518 requests in `dataset/deletion_requests.csv` |
-| `chat_transcript` | The root `log.txt` file generated by your coding agent |
-| AI interview | Live explanation of your architecture, approach, and evaluation |
-
-You may use any programming language, model, framework, or retrieval approach. Include clear setup and execution instructions in `README.md` inside `code.zip`.
-
-To package `code.zip` from the repository root without bundling the dataset:
-
-**macOS / Linux:**
+From the repository root:
 
 ```bash
-zip -r code.zip README.md code -x "*/__pycache__/*" "*/.venv/*" "*/venv/*" "*/node_modules/*" "*/.git/*" "*/.DS_Store"
+zip -r code.zip README.md code -x "*/node_modules/*" "*/.runs/*" "*/__pycache__/*" "*/.venv/*" "*/.git/*" "*/.DS_Store"
 ```
 
-**Windows (PowerShell):**
+`code.zip` then contains the runnable solution, prompts, configuration, this README and `code/evaluation/` (with
+`evaluation_report.md` and `usage_report.md`). `dataset/`, `node_modules/` and run outputs are excluded. Upload
+`output.csv` and `log.txt` (chat transcript) separately.
 
-```powershell
-Compress-Archive -Path README.md, code -DestinationPath code.zip -Force
-```
-
-When packaging `code.zip`:
-
-- Keep your evaluation reports in `code/evaluation/` so they are bundled automatically with `code` (or add `evaluation` to the archive command above if you placed them in a top-level `evaluation/` directory).
-- Do **not** include `dataset/`, virtual environments (`.venv`, `venv`, `node_modules`), or build caches (`__pycache__`). On Windows, keep `.venv` at the repository root (outside `code/`) and remove any `code/__pycache__` folders before running `Compress-Archive`.
-- Do **not** include nested archives (`.zip`, `.tar`, `.gz`, `.tgz`, `.7z`, `.rar`) inside `code.zip` — submissions containing nested archive files will be rejected.
-
-Before submitting, confirm that:
-
-- `output.csv` has the exact header `case_id,deletion_status,steps_json` and contains all 518 data rows sorted by `case_id`;
-- every `steps_json` value is a valid JSON array with consecutive step numbers starting at `1`;
-- findings cite valid evidence IDs, and `COMPLETE` verification steps cite evidence proving the current state;
-- proposed remediation and future verification steps use an empty `evidence_id` (`""`);
-- `code.zip` includes your runnable code, `README.md`, `code/evaluation/evaluation_report.md`, and `code/evaluation/usage_report.md`;
-- `log.txt` follows the `AGENTS.md` turn format and is uploaded to the `chat_transcript` slot; and
-- no API keys, credentials, real personal data, or sensitive configuration values are included.
+Challenge and submission page:
+https://www.hackerrank.com/contests/hackerrank-orchestrate-october26/challenges/ghost-data-still-exists
