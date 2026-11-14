@@ -129,10 +129,46 @@ Sample metrics are step F1 / status accuracy at that point.
 | 8 | Replica drift masked: a primary-only inventory taken later "proved" a replica copy gone; a partial bundle with an empty account collection overrode an explicit PRESENT lookup | snapshot omissions treated as absence too eagerly | enumerating snapshots settle absence only for records without an explicit post-request sighting; snapshots comparing more copies are preferred | **0.987 / 100%** |
 | 9 | 18 rows of the full run cited log exports captured after `audit_at` (contract violation caught by the validator) | state chosen from later-captured files | state may only come from files captured by `audit_at`; in-scope records without citeable state still get their required final-state verification in INCOMPLETE plans; COMPLETE plans contain only evidence-backed verifications | 0.987 / 100%, 0 violations |
 | 10 | Custom case `case_c08` (Korean "do not delete my account, just stop marketing emails") returned a deletion verdict | negation rules were English-only | added Korean, Japanese, Chinese, Spanish, Portuguese, French and German negations | custom 100% |
+| 11 | Independent review: five January cases had no account step; a June case listed a July export; a March case listed an August account | records without citeable state were dropped; linking was time-invariant | required final-state verification for in-scope records; links dated at or before `audit_at`, later readbacks only when no later request exists | 0.987 / 100% |
 
 ## Independent verification of the hard cases
 
-PLACEHOLDER-ADJUDICATION
+The 518 evaluation cases have no public answers, so the hardest 17 were checked by an **independent two-stage review**
+run as a multi-agent workflow (10 agents):
+
+1. **Investigators** (blind to the engine and its code) derived the expected status and steps for each case directly
+   from the raw dataset — opening screenshots and PDFs, grepping every identifier variant, checking capture times.
+2. **Adjudicators** compared each investigator answer with the engine output and settled every discrepancy from the
+   raw evidence, stating a general rule (no case ids) for the engine.
+
+### Cases reviewed
+
+- The 12 hand-crafted evaluation cases built around screenshots / PDFs: `case_33`, `34`, `35`, `39`, `45`, `46`,
+  `50`, `52`, `53`, `55`, `61`, `63`.
+- Five January cases where the first engine version produced no account step: `case_282`, `526`, `527`, `529`, `531`.
+
+### Rules adopted from the review
+
+| Adjudicated rule | Engine change |
+| --- | --- |
+| Every in-scope account must be verified even when no evidence available at `audit_at` proves its state | in-scope records without citeable state get their required final-state verification in INCOMPLETE plans (fixed all five January cases) |
+| A finding must cite an item captured by `audit_at`; prefer the pre-audit file when both show the record | state is taken only from files captured by `audit_at` (e.g. `case_527` now cites `evidence_62`, not a later bundle) |
+| Scope each case to its own request: never carry a record introduced by a later request back into an earlier case | linking evidence must be dated at or before `audit_at`; later readbacks may attribute records only when the person has no later deletion request (fixes `case_46`, `case_52`; `case_33` no longer re-lists the June export) |
+| A COMPLETE case never contains a verification without evidence | unverified records are excluded from COMPLETE plans (`case_46`) |
+| A link available at `audit_at` outranks a post-audit attribution | link reasons are ordered accordingly |
+
+### Rules rejected
+
+| Suggestion | Why it was rejected |
+| --- | --- |
+| Infer `account_0NN` for hand-crafted users from the naming pattern of the public samples | not grounded in participant evidence (the adjudicator for `case_63` agreed); would be a case-family shortcut |
+| Resolve an account from `sample_output.csv` for the same person | organizer answers must never feed predictions |
+
+### Remaining disagreement
+
+One point stayed split between reviewers: whether records that only a September readback ties to a person (whose
+case was audited months earlier, with no later request) belong to that case. The engine includes them as
+verification-only steps — never findings, never cited — which matches four of the five investigator answers.
 
 ## Known limitations
 

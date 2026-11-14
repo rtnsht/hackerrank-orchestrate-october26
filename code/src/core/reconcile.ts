@@ -102,7 +102,7 @@ function buildAssignments(ctx: AuditContext): Map<string, LinkedResource[]> {
   for (const spec of SPECS) {
     const acts = workerOps.filter((a) => a.target_system === spec.system && spec.operations.includes(a.event_type));
     const candidates = new Map<string, ActivityRow[]>();
-    for (const { req, direct } of requests) {
+    for (const { req, user, direct } of requests) {
       if (direct.some((d) => d.system === spec.system)) continue;
       if (spec.requireSettledFamily && !settledFamily(req, direct)) continue;
       const lo = Math.max(iso(req.requested_at), iso(req.reported_at) - spec.beforeH * HOUR);
@@ -110,11 +110,16 @@ function buildAssignments(ctx: AuditContext): Map<string, LinkedResource[]> {
       const want = RESULT_FOR_STATUS[req.reported_status];
       const inWindow = acts.filter((a) => {
         const t = iso(a.event_time);
-        return t >= lo && t <= hi && (owners.get(a.resource_id)?.size ?? 0) === 0;
+        // never a record that any evidence attributes to someone else
+        const own = owners.get(a.resource_id);
+        return t >= lo && t <= hi && (!own || own.size === 0 || (own.size === 1 && own.has(user)));
       });
       // prefer operations whose reported result agrees with the request's reported status
       const agreeing = spec.matchResult && want ? inWindow.filter((a) => a.reported_result === want) : inWindow;
-      const list = agreeing.length ? agreeing : inWindow;
+      const pool = agreeing.length ? agreeing : inWindow;
+      // a record that evidence already ties to this subject is the strongest candidate
+      const mine = pool.filter((a) => owners.get(a.resource_id)?.has(user));
+      const list = mine.length ? mine : pool;
       if (list.length) candidates.set(req.case_id, list.sort((x, y) => iso(x.event_time) - iso(y.event_time)));
     }
     const assigned = new Map<string, ActivityRow>();

@@ -52,15 +52,21 @@ export class DeletionAuditor {
   }
 
   /** Resources whose visible evidence carries any identifier of the subject (plus transitive source links). */
-  linkResources(profile: IdentityProfile, req: DeletionRequest, extraLinks: LinkedResource[] = []): LinkedResource[] {
+  linkResources(profile: IdentityProfile, req: DeletionRequest, extraLinks: LinkedResource[] = [], opts: { laterLinks?: boolean } = {}): LinkedResource[] {
     const linked = new Map<string, LinkedResource>();
-    // Ownership is time-invariant (a record that carries the subject's identifier belongs to the subject whenever
-    // it is observed); only the *state* reconstruction is restricted to information available at audit_at.
+    // A record joins this case if the evidence tying it to the subject is dated at or before audit_at (record-level
+    // time, so a later export of earlier events still counts). With `laterLinks` (only used when the person has no
+    // later deletion request that would own that evidence) later readbacks may also attribute records; such records
+    // can never raise findings - their state is still judged only from evidence available at audit_at.
     for (const o of this.index.observations) {
       if (o.claim) continue;
+      const later = !this.visible(o, req.audit_at);
+      if (later && !opts.laterLinks) continue;
       const hit = o.identifiers.find((t) => profile.tokens.has(t));
       if (!hit) continue;
-      const cur = linked.get(o.resourceId) ?? { resourceId: o.resourceId, system: o.system, linkEvidence: [], linkReason: hit };
+      const cur = linked.get(o.resourceId) ?? { resourceId: o.resourceId, system: o.system, linkEvidence: [], linkReason: later ? `post-audit attribution (${hit})` : hit };
+      // a link available at audit_at always takes precedence over a post-audit attribution
+      if (!later && cur.linkReason.startsWith('post-audit attribution')) cur.linkReason = hit;
       if (!cur.linkEvidence.includes(o.evidenceId)) cur.linkEvidence.push(o.evidenceId);
       linked.set(o.resourceId, cur);
     }
@@ -71,7 +77,7 @@ export class DeletionAuditor {
     while (grew) {
       grew = false;
       for (const o of this.index.observations) {
-        if (o.claim) continue;
+        if (o.claim || !this.visible(o, req.audit_at)) continue;
         const refs = o.identifiers.filter((t) => t.startsWith('res:')).map((t) => t.slice(4));
         if (!refs.length) continue;
         if (!linked.has(o.resourceId)) {
@@ -115,7 +121,7 @@ export class DeletionAuditor {
     if (!category) category = defaultCategory(system);
 
     explicit.sort((a, b) => iso(a.observedAt) - iso(b.observedAt) || iso(a.capturedAt) - iso(b.capturedAt) || severity(a.state) - severity(b.state));
-    let latest = explicit[explicit.length - 1];
+    let latest: Observation | undefined = explicit[explicit.length - 1];
     // Same-instant observations from one snapshot (primary vs replica): any remaining copy counts.
     if (latest) {
       const same = explicit.filter((o) => o.evidenceId === latest!.evidenceId && o.observedAt === latest!.observedAt);
@@ -176,7 +182,7 @@ export class DeletionAuditor {
       // The record is in scope (seen after the request, or processed by this request's worker batch) but nothing
       // available at audit_at proves its state: no finding can be raised, yet the post-remediation verification
       // must still cover its required final state.
-      const inScope = postRequest.length > 0 || link.linkReason === 'workflow-batch reconciliation';
+      const inScope = postRequest.length > 0 || link.linkReason === 'workflow-batch reconciliation' || link.linkReason.startsWith('post-audit attribution');
       if (decision && inScope) {
         plan = { verification: requiredVerification(decision.treatment), compliant: true };
         unverified = true;

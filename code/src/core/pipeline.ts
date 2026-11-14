@@ -7,6 +7,7 @@ import { classifyIntentRules, type IntentResult } from './intent.js';
 import { inferWorkflowBatchLinks } from './reconcile.js';
 import { DeletionPolicy } from './policy.js';
 import type { CaseResult, DeletionRequest } from './types.js';
+import { iso } from './normalize.js';
 
 export interface AuditContext {
   dataset: Dataset;
@@ -57,6 +58,21 @@ export function resolveProfile(ctx: AuditContext, req: DeletionRequest): Identit
   return hit ? ctx.identity.profile(hit.userId, hit.matchedBy) : null;
 }
 
+/** True when the same person filed another deletion request after this case's audit_at. */
+export function hasLaterRequest(ctx: AuditContext, req: DeletionRequest, userId: string): boolean {
+  return ctx.allRequests.some(
+    (r) => r.case_id !== req.case_id && iso(r.requested_at) > iso(req.audit_at) && classifyIntentRules(r.request_text).intent === 'DELETION' && ctx.identity.resolveUser(r.email, r.requested_at)?.userId === userId,
+  );
+}
+
+/** Stage 3: every record tied to the subject (identifier links, source references, batch reconciliation). */
+export function discoverResources(ctx: AuditContext, req: DeletionRequest, profile: IdentityProfile): LinkedResource[] {
+  const laterLinks = !hasLaterRequest(ctx, req, profile.userId);
+  const direct = ctx.auditor.linkResources(profile, req, [], { laterLinks });
+  const inferred = inferWorkflowBatchLinks(ctx, req, profile, direct);
+  return ctx.auditor.linkResources(profile, req, inferred, { laterLinks });
+}
+
 export function auditCase(ctx: AuditContext, req: DeletionRequest, intent: IntentResult = classifyIntentRules(req.request_text)): CaseResult & { trace: CaseTrace } {
   const trace: CaseTrace = { intent, warnings: [] };
   if (intent.intent !== 'DELETION') {
@@ -70,9 +86,7 @@ export function auditCase(ctx: AuditContext, req: DeletionRequest, intent: Inten
   trace.userId = profile.userId;
   trace.matchedBy = profile.matchedBy;
   trace.identifiers = [...profile.tokens];
-  const direct = ctx.auditor.linkResources(profile, req);
-  const inferred = inferWorkflowBatchLinks(ctx, req, profile, direct);
-  const linked = ctx.auditor.linkResources(profile, req, inferred);
+  const linked = discoverResources(ctx, req, profile);
   trace.linked = linked;
   const assessments = linked.map((l) => ctx.auditor.assess(l, req));
   for (const a of assessments) if (!a.plan) trace.warnings.push(`${a.resourceId}: ${a.notes.join('; ') || 'no applicable policy/state'}`);

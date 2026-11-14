@@ -3,8 +3,7 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import type { LinkedResource } from '../../core/audit.js';
-import { getAuditContext, resolveProfile } from '../../core/pipeline.js';
-import { inferWorkflowBatchLinks } from '../../core/reconcile.js';
+import { discoverResources, getAuditContext, resolveProfile } from '../../core/pipeline.js';
 import { validateCaseResult } from '../../core/validate.js';
 import type { DeletionRequest } from '../../core/types.js';
 import { classifyIntent } from '../agents/index.js';
@@ -97,9 +96,7 @@ export const discoverResourcesTool = createTool({
     const ctx = await getAuditContext();
     const req = input.request as DeletionRequest;
     const profile = ctx.identity.profile(input.userId);
-    const direct = ctx.auditor.linkResources(profile, req);
-    const inferred = inferWorkflowBatchLinks(ctx, req, profile, direct);
-    const linked: LinkedResource[] = ctx.auditor.linkResources(profile, req, inferred);
+    const linked: LinkedResource[] = discoverResources(ctx, req, profile);
     return { linked };
   },
 });

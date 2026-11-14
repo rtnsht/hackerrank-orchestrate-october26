@@ -140,3 +140,86 @@ branch=freshbuild-mastraai-101
 repo_root=/home/user/hackerrank-orchestrate-october26
 worktree=main
 parent_agent=workflow orchestration script
+
+## [2026-11-14T08:17:32Z] Sub-agent adjudication of case_34, case_35, case_39
+
+User Prompt (verbatim, secrets redacted):
+there should not be any code in python, as everything is in mastra which is typescript. Pls note
+
+Agent Response Summary:
+Workflow sub-agent compared engine and investigator answers for case_34, case_35 and case_39 using shell tools (grep/jq) over dataset/ only. No project code was read or run and no Python was written. Both sides agree on case_34. For case_35 and case_39 the engine leaves out the account VERIFY_RECORD_ABSENT step, which every INCOMPLETE sample includes, so the investigator side wins.
+
+Actions:
+* grep/jq over dataset/system_activity.csv, deletion_rules.csv, sample_output.csv, evidence_files.csv, evidence/logs/service_events_ap_south_20260915.log
+* Viewed account_admin_console_20260926.png and connector_management_console_20260807.png
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5
+branch=freshbuild-mastraai-101
+repo_root=/home/user/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=workflow orchestration script
+
+## [2026-11-14T00:00:00Z] Adjudicate engine vs investigator for case_53, case_55, case_63
+
+User Prompt (verbatim, secrets redacted):
+there should not be any code in python, as everything is in mastra which is typescript. Pls note
+
+Agent Response Summary:
+Sub-agent compared engine and investigator answers for case_53, case_55 and case_63 against raw dataset evidence (read-only, shell tools only, no Python). Concluded the visual-evidence family scopes each case to the screenshot-linked resource: investigator wins on case_53/case_55 (engine added scaffold resources known only from post-audit evidence, and inferred search absence from a non-exhaustive snapshot); engine wins on case_63 (account_009 has no evidence anywhere).
+
+Actions:
+* Read dataset CSVs, evidence_28/32/60 screenshots, evidence_01/02/75 contents, engine_cases.json in scratchpad
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5
+branch=freshbuild-mastraai-101
+repo_root=/home/user/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=workflow orchestration script
+
+## [2026-11-14T08:40:00Z] Adjudicate engine vs investigator for case_61/282/526/527/529/531
+
+User Prompt (verbatim, secrets redacted):
+there should not be any code in python, as everything is in mastra which is typescript. Pls note
+
+Agent Response Summary:
+Sub-agent compared engine and investigator answers for case_61, case_282, case_526, case_527, case_529 and case_531 against raw dataset evidence (read-only, shell tools only, no code written). Statuses and findings agree everywhere; the engine omits the primary-account VERIFY_RECORD_ABSENT step in all six cases (every sample verifies the account; batch reconciliation links account_9763/1400/3693/4063/3146, sample case_07 links account_007), and in case_527 it cites evidence_49 (captured 2026-01-31, after audit_at) where evidence_62 (pre-audit) shows support_3896. Investigator wins on both points.
+
+Actions:
+* Read dataset CSVs, evidence_62/77/26/49 records, evidence_46/28 screenshots, evidence_27 PDF, engine_cases.json in scratchpad
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5
+branch=freshbuild-mastraai-101
+repo_root=/home/user/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=workflow orchestration script
+## [2026-11-14T11:20:00Z] Mastra layer, evaluation harness, independent multi-agent verification
+
+User Prompt (verbatim, secrets redacted):
+there should not be any code in python, as everything is in mastra which is typescript. Pls note
+(continuation of this turn after the background verification workflow completed; no new user message)
+
+Agent Response Summary:
+Built the Mastra layer: intent, evidence-vision and reviewer agents with Markdown prompts and metered token usage, one createTool per audit stage, and the deletion-audit workflow. The CLI runs that workflow for all 518 requests, validates the output contract, writes output.csv and regenerates usage_report.md. Added an evaluation harness that runs the real workflow on the samples and on 8 synthetic custom cases (TypeScript fixture generator); it found and fixed English-only negation handling. Ran a 10-agent workflow: investigators derived answers blind, adjudicators settled discrepancies. Adopted grounded rules (per-request scoping of linked records, required final-state verification for in-scope records, citations only from files captured by audit_at) and rejected suggestions that relied on naming patterns or sample answers. Final run: samples 100% status / 98.7% step F1, custom cases 100%, 0 contract violations.
+
+Actions:
+* created code/src/mastra/{index.ts,llm.ts,agents/index.ts,tools/audit-tools.ts,workflows/deletion-audit-workflow.ts,prompts/*.md}
+* created code/src/main.ts, code/src/report/usage-report.ts, code/src/core/validate.ts
+* created code/evaluation/{evaluate.ts,custom-cases.ts,evaluation_report.md}; regenerated usage_report.md
+* edited code/src/core/{audit.ts,policy.ts,intent.ts,reconcile.ts,pipeline.ts}
+* Workflow tool: independent-case-audit (10 subagents, 17 cases)
+* rewrote README.md with setup/run/architecture; npm start (output.csv); git commit + push
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5
+branch=freshbuild-mastraai-101
+repo_root=/home/user/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
+
