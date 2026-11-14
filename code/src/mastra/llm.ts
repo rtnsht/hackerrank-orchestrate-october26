@@ -33,12 +33,25 @@ export const DEFAULT_MODELS: Record<AgentRole, string> = {
 };
 
 export function modelFor(role: AgentRole): string {
+  if (overrides[role]) return `mock/${role}-mock-model`;
   const env = { intent: 'AUDIT_INTENT_MODEL', vision: 'AUDIT_VISION_MODEL', reviewer: 'AUDIT_REVIEW_MODEL' }[role];
   return process.env[env] ?? process.env.AUDIT_MODEL ?? DEFAULT_MODELS[role];
 }
 
+/** Test hook: inject a language-model object (e.g. Mastra's mock model) for one agent role. */
+const overrides: Partial<Record<AgentRole, unknown>> = {};
+export function setModelOverride(role: AgentRole, model: unknown): void {
+  overrides[role] = model;
+}
+
+/** What the Mastra Agent actually receives: an injected model object, or a "provider/model" router id. */
+export function resolveModel(role: AgentRole): unknown {
+  return overrides[role] ?? modelFor(role);
+}
+
 /** LLM agents run only when explicitly allowed (AUDIT_LLM != off) and the provider's key is in the environment. */
 export function llmEnabled(role: AgentRole): boolean {
+  if (overrides[role]) return true;
   const mode = (process.env.AUDIT_LLM ?? 'auto').toLowerCase();
   if (mode === 'off' || mode === '0' || mode === 'false') return false;
   if (role === 'reviewer' && !['1', 'true', 'on'].includes((process.env.AUDIT_LLM_REVIEW ?? '').toLowerCase())) return false;

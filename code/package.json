@@ -5,11 +5,11 @@
   "description": "Mastra-based deletion-audit agent for HackerRank Orchestrate (Ghost Data Still Exists)",
   "type": "module",
   "scripts": {
-    "start": "tsx src/main.ts",
-    "audit": "tsx src/main.ts",
-    "evaluate": "tsx evaluation/evaluate.ts",
-    "samples": "tsx src/main.ts --samples",
-    "extract-media": "tsx src/scripts/extract-media.ts",
+    "start": "tsx --no-warnings src/main.ts",
+    "audit": "tsx --no-warnings src/main.ts",
+    "evaluate": "tsx --no-warnings evaluation/evaluate.ts",
+    "samples": "tsx --no-warnings src/main.ts --samples",
+    "llm-smoke": "tsx --no-warnings src/scripts/llm-smoke.ts",
     "typecheck": "tsc --noEmit"
   },
   "engines": {

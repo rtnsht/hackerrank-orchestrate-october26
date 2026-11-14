@@ -39,6 +39,7 @@ A full run takes a few seconds (first run ~30 s extra if the OCR cache is missin
 | `npm run samples` | Runs the 32 public sample requests (predictions in `code/.runs/`) |
 | `npm run evaluate` | Scores samples against `dataset/sample_output.csv` and the participant-created cases, rewrites the metrics block of `code/evaluation/evaluation_report.md` |
 | `npm start -- --trace .runs/trace.jsonl` | Also writes a per-case explanation trace (linked records, link evidence, state evidence, rule applied) |
+| `npm run llm-smoke` | Drives the real Mastra agent code paths with Mastra’s mock model (no key needed) to prove the LLM wiring |
 | `npm run typecheck` | `tsc --noEmit` over the project |
 
 ### Optional LLM agents (environment variables only — never commit keys)
@@ -58,6 +59,9 @@ provider key is present in the environment (or an uncommitted `.env` loaded by y
 ---
 
 ## Architecture
+
+Full architecture, data-flow and sequence diagrams (with AI/LLM touch points highlighted) and local-run guide:
+[`code/docs/ARCHITECTURE.md`](./code/docs/ARCHITECTURE.md).
 
 ```text
 deletion_requests.csv ──► Mastra workflow "deletion-audit" (one run per request)

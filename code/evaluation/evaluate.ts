@@ -18,7 +18,7 @@ const RUNS = path.join(CODE, '.runs');
 fs.mkdirSync(RUNS, { recursive: true });
 
 function runMain(args: string[], env: Record<string, string> = {}) {
-  execFileSync(process.execPath, [path.join(CODE, 'node_modules', 'tsx', 'dist', 'cli.mjs'), path.join(CODE, 'src', 'main.ts'), ...args, '--no-usage-report'], {
+  execFileSync(process.execPath, [path.join(CODE, 'node_modules', 'tsx', 'dist', 'cli.mjs'), '--no-warnings', path.join(CODE, 'src', 'main.ts'), ...args, '--no-usage-report'], {
     cwd: CODE,
     env: { ...process.env, ...env },
     stdio: ['ignore', 'ignore', 'inherit'],

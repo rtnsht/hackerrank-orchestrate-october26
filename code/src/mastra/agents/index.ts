@@ -9,7 +9,7 @@ import type { Observation, ObservedState } from '../../core/types.js';
 import type { ParsedEvidence } from '../../core/evidence/structured.js';
 import { normEmail, normPhone } from '../../core/normalize.js';
 import { systemFromResource } from '../../core/evidence/records.js';
-import { llmEnabled, modelFor, usageTracker } from '../llm.js';
+import { llmEnabled, modelFor, resolveModel, usageTracker } from '../llm.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const prompt = (name: string) => fs.readFileSync(path.join(here, '..', 'prompts', `${name}.md`), 'utf8');
@@ -19,7 +19,7 @@ export const intentAgent = new Agent({
   name: 'Deletion intent classifier',
   description: 'Decides whether a multilingual privacy request authorizes account / personal-data deletion.',
   instructions: prompt('intent-classifier'),
-  model: modelFor('intent'),
+  model: () => resolveModel('intent') as never,
 });
 
 export const evidenceVisionAgent = new Agent({
@@ -27,7 +27,7 @@ export const evidenceVisionAgent = new Agent({
   name: 'Evidence screenshot and document reader',
   description: 'Extracts record-level facts (resource, state, identifiers) from screenshots and PDFs.',
   instructions: prompt('evidence-vision'),
-  model: modelFor('vision'),
+  model: () => resolveModel('vision') as never,
 });
 
 export const auditReviewerAgent = new Agent({
@@ -35,7 +35,7 @@ export const auditReviewerAgent = new Agent({
   name: 'Deletion audit reviewer',
   description: 'Challenges a deterministic audit plan and records concerns for human review.',
   instructions: prompt('audit-reviewer'),
-  model: modelFor('reviewer'),
+  model: () => resolveModel('reviewer') as never,
 });
 
 const IntentSchema = z.object({
