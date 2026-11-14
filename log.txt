@@ -1,0 +1,102 @@
+## [2026-11-14T07:42:00Z] SESSION START
+
+tool=Claude Code
+model=claude-opus-5-5
+Repo Root: /home/user/hackerrank-orchestrate-october26
+Branch: freshbuild-mastraai-101
+Worktree: main
+Parent Agent: none
+Language: ts
+Time Remaining: not configured
+
+## [2026-11-14T09:30:00Z] Fresh Mastra-based build of Ghost Data Still Exists audit agent
+
+User Prompt (verbatim, secrets redacted):
+do the work from the start, with no take over of knowledge and code from the previous sessions
+
+make sure the first the files are exactly aligned with https://github.com/interviewstreet/hackerrank-orchestrate-october26 and then start the work.
+
+use mastra ai to solve the october26 problem
+https://mastra.ai/learn
+https://mastra.ai/docs
+https://mastra.ai/integrations
+https://mastra.ai/reference
+https://mastra.ai/docs/mastra-platform/overview
+
+Agent Response Summary:
+Verified the branch is byte-identical to upstream interviewstreet/hackerrank-orchestrate-october26 main (same commit 0eddbbd, empty diff) before starting. Studied every participant-facing evidence format and built a TypeScript engine under code/ (Mastra @mastra/core 1.83 installed and API verified): evidence parsers for SQL (node:sqlite), JSON bundles/exports, six log dialects with trace correlation, handover text, PDFs (pdf-parse) and screenshots (tesseract.js OCR with local eng model + sharp upscaling), identity resolution over current + historical identifiers, point-in-time state reconstruction, policy mapping from deletion_rules.csv, workflow-batch reconciliation for identifier-less records, and deterministic step ordering. Sample score reached 100% status accuracy and step F1 0.987.
+
+Actions:
+* git fetch upstream + git diff (alignment check)
+* created code/package.json, tsconfig.json, src/core/* (csv, types, normalize, dataset, identity, intent, policy, audit, reconcile, pipeline, evidence/*)
+* npm install @mastra/core zod tesseract.js @tesseract.js-data/eng pdf-parse sharp tsx typescript @types/node
+* code/evaluation/score.ts and src/scripts/quick-eval.ts (sample scorer)
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5
+branch=freshbuild-mastraai-101
+repo_root=/home/user/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
+
+## [2026-11-14T09:35:00Z] Remove Python; keep the whole solution in Mastra/TypeScript
+
+User Prompt (verbatim, secrets redacted):
+there should not be any code in python, as everything is in mastra which is typescript. Pls note
+
+Agent Response Summary:
+Acknowledged: the solution is TypeScript/Mastra only. Removed the empty starter placeholders code/main.py and code/evaluation/main.py and a scratch .mjs probe; from now on exploration and file edits use tsx scripts and direct edits, never Python. Continued improving the engine (partial-snapshot absence no longer overrides explicit sightings).
+
+Actions:
+* git rm code/main.py code/evaluation/main.py
+* edited code/src/core/audit.ts
+* npx tsx src/scripts/quick-eval.ts
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5
+branch=freshbuild-mastraai-101
+repo_root=/home/user/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
+
+
+## [2026-11-14T00:00:00Z] Sub-agent audit of case_33 and case_52 (read-only)
+
+User Prompt (verbatim, secrets redacted):
+there should not be any code in python, as everything is in mastra which is typescript. Pls note (workflow sub-task: investigate case_33, case_52 from dataset only)
+
+Agent Response Summary:
+Investigated user_18 (ingrid.dahl@outlook.com) across activity and evidence. case_52 window shows export_1260 Ready in the 2026-06-18 export console screenshot (evidence_23); case_33 window shows statement NST-2026-0718-1842 (export_1842) in the 2026-07-18 PDF (evidence_18). Both judged INCOMPLETE with delete/verify steps plus account_2373 absent and audit_record_8486 retained. No files other than this log were modified and no project code was read or run.
+
+Actions:
+* grep/sed over dataset/ CSVs and evidence; viewed one PNG and one PDF
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5
+branch=freshbuild-mastraai-101
+repo_root=/home/user/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=workflow orchestration script
+
+## [2026-11-14T00:00:00Z] Sub-agent audit of case_34, case_35, case_39
+
+User Prompt (verbatim, secrets redacted):
+there should not be any code in python, as everything is in mastra which is typescript. Pls note
+
+Agent Response Summary:
+Read-only dataset investigation of case_34 (user_11), case_35 (user_13) and case_39 (user_14) to derive expected steps. Each case window brackets one screenshot (evidence_04, evidence_09, evidence_14) tied to the subject by a data_catalog LINK_RESOURCE_IDENTITY activity; the shared 2026-09-15 log (evidence_01) falls outside each request window. No code was written or run and no dataset files were changed.
+
+Actions:
+* grep/sed/pdftotext over dataset/ files; viewed PNG screenshots
+* returned structured case findings to parent workflow
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5
+branch=freshbuild-mastraai-101
+repo_root=/home/user/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=workflow orchestration script
