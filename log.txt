@@ -223,3 +223,52 @@ repo_root=/home/user/hackerrank-orchestrate-october26
 worktree=main
 parent_agent=none
 
+## [2026-11-14T12:10:00Z] Architecture document with diagrams and local-run guide
+
+User Prompt (verbatim, secrets redacted):
+create a document to have architecture of this orchestrate build challenge
+architecture diagram
+sequence diagram for different scenarios
+data flow diagram
+
+how I can run it locally.
+
+Agent Response Summary:
+Wrote code/docs/ARCHITECTURE.md (ships inside code.zip) with an architecture diagram, a context-level and level-1 data flow diagram, a data-model class diagram, a policy mapping table, nine sequence diagrams (full run, single request, non-deletion, complete with tombstone, incomplete with flow and restore ordering, replication drift, historical identifier and cut-off, screenshot/PDF handling, worker-batch reconciliation) and a step-by-step local-run guide covering prerequisites, commands, LLM settings, Windows notes and troubleshooting. Every Mermaid diagram was validated by rendering it with mermaid-cli and headless Chromium, and SVG copies were saved to code/docs/diagrams/. Also removed a stale npm script and silenced the node:sqlite experimental warning.
+
+Actions:
+* created code/docs/ARCHITECTURE.md and code/docs/diagrams/*.svg (14 diagrams)
+* edited code/package.json (removed broken extract-media script, added --no-warnings), code/evaluation/evaluate.ts
+* rendered diagrams with @mermaid-js/mermaid-cli (scratchpad install)
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5
+branch=freshbuild-mastraai-101
+repo_root=/home/user/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
+
+## [2026-11-14T12:15:00Z] Where AI/LLMs are used; highlight in diagrams; how to add
+
+User Prompt (verbatim, secrets redacted):
+where is AI and LLM being used in the ghost-data-challenge, highlight it in the diagram
+if its not added how do I add it.
+
+Agent Response Summary:
+Explained that three Mastra LLM agents are implemented and registered (intent classifier, screenshot/PDF vision reader, opt-in reviewer). None ran for the submitted output.csv because the build environment had no API key, so the multilingual rules and OCR + screen rules were used instead. Tesseract OCR (ML) is the only AI component that ran. Highlighted LLM agents (orange) and ML OCR (purple) in the architecture diagram, added a dedicated AI touch-points diagram and table, and boxed the LLM participants in the sequence diagrams. Added a model-override hook and `npm run llm-smoke`, which drives the production agent code paths with Mastra's mock model and proves structured-output parsing, the rule guardrail and token metering work without a key. Documented how to enable the agents and how to add a new one. output.csv is unchanged.
+
+Actions:
+* edited code/src/mastra/llm.ts (setModelOverride/resolveModel), code/src/mastra/agents/index.ts (dynamic model)
+* created code/src/scripts/llm-smoke.ts; npm run llm-smoke
+* edited code/docs/ARCHITECTURE.md (section 2A, highlighted diagrams), README.md
+* Workflow tool: verify-architecture-doc (fresh-clone runner + fact-checker)
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5
+branch=freshbuild-mastraai-101
+repo_root=/home/user/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
+
