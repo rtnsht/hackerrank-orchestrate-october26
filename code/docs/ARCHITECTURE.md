@@ -38,6 +38,7 @@ Pre-rendered SVG copies are in [`docs/diagrams/`](./diagrams/).
 flowchart TB
     subgraph IN["Participant data (dataset/)"]
         REQ["deletion_requests.csv"]
+        SREQ["sample_deletion_requests.csv"]
         IDN["user_identities.csv\nuser_audit_log.csv"]
         ACT["system_activity.csv"]
         RUL["deletion_rules.csv"]
@@ -45,9 +46,11 @@ flowchart TB
         EVD["evidence/\nSQL · JSON · logs · txt · PDF · PNG"]
     end
 
+    ENV[/"code/.env  (AUDIT_INTENT_* · AUDIT_VISION_* · AUDIT_REVIEW_*)"/]
+
     subgraph CLI["CLI — src/main.ts"]
         RUN["runAudit()\nconcurrency pool"]
-        VAL["validateCaseResult()\ncontract check"]
+        VAL["validateCaseResult()\nevery row incl. NOT_APPLICABLE"]
         OUT["CSV writer"]
         USG["usage-report.ts"]
     end
@@ -64,6 +67,7 @@ flowchart TB
             T4["reconstruct-resource-state"]
             T5["plan-deletion-steps"]
         end
+        LLMCFG["llm.ts\nper-agent model · key · endpoint"]
         subgraph AGENTS["Agents (optional LLM)"]
             A1["deletion-intent-agent\nclaude-haiku-5-5"]
             A2["evidence-vision-agent\nclaude-sonnet-5-5"]
@@ -84,18 +88,23 @@ flowchart TB
     end
 
     CACHE[("cache/media_text_cache.json\nOCR / PDF text")]
+    VCACHE[("cache/vision_llm_cache.json\nvision results")]
     OCR["tesseract.js + sharp\npdf-parse"]
 
     REQ --> RUN
     RUN --> WF
     S1 --> T1 --> A1
-    T1 -.fallback.-> INT
+    T1 -- "always: cross-check" --> INT
+    INT --> REC
+    SREQ & REQ --> REC
+    ACT --> REC
     S2 --> T2 --> IDR
     S3 --> T3 --> AUD
     T3 --> REC
     S4 --> T4 --> AUD
     T4 --> POL
     S5 --> T5 --> AUD
+    T5 --> VAL
     S5 -.optional.-> A3
     A1 & A2 & A3 --- PR
 
@@ -104,6 +113,8 @@ flowchart TB
     PAR --> OCR
     OCR <--> CACHE
     PAR -.screenshots / PDFs.-> A2
+    A2 <--> VCACHE
+    ENV --> LLMCFG --> AGENTS
     EVD & MAN --> PAR
     ACT --> IDX
     IDN --> IDR
@@ -116,25 +127,28 @@ flowchart TB
     classDef llm fill:#ffedd5,stroke:#c2410c,stroke-width:3px,color:#7c2d12
     classDef ml fill:#ede9fe,stroke:#6d28d9,stroke-width:2px,color:#3b0764
     classDef rules fill:#f1f5f9,stroke:#64748b,stroke-dasharray:4 3,color:#0f172a
-    class A1,A2,A3,PR llm
+    class A1,A2,A3,PR,LLMCFG,ENV llm
     class OCR ml
     class INT rules
 ```
 
 **Legend:** orange boxes with a thick border are **LLM agents** (Mastra `Agent`, optional, switched on by an API
 key). The purple box is **machine-learning OCR** (tesseract.js LSTM model, always on, runs locally). The dashed grey
-box is the **rule-based fallback** used when no LLM is configured. Everything else is deterministic TypeScript.
+box is the **rule-based intent classifier**: it always runs, cross-checks the intent agent (an explicit "do not delete"
+always wins) and is the only intent source used for batch reconciliation and later-request scoping. Each agent is
+configured independently from `code/.env` (section 5.5). Everything else is deterministic TypeScript.
 
 ### Components
 
 | Component | File(s) | Responsibility |
 | --- | --- | --- |
-| CLI | `src/main.ts` | Loads requests, runs the Mastra workflow for each one (pool of 8), validates every row, writes `output.csv`, regenerates the usage report |
+| Environment | `src/env.ts`, `.env.example` | Loads `code/.env` (or `AUDIT_ENV_FILE`) before anything else; shell variables win |
+| CLI | `src/main.ts` | Loads requests, prints each agent's resolved configuration, runs the Mastra workflow for each one (pool of 8), re-validates every row (including NOT_APPLICABLE), writes `output.csv`, regenerates the usage report |
 | Mastra instance | `src/mastra/index.ts` | Registers the three agents and the `deletion-audit` workflow |
 | Workflow | `src/mastra/workflows/deletion-audit-workflow.ts` | Five `createStep` steps chained with `.then()`; non-deletion requests short-circuit to `NOT_APPLICABLE` |
 | Tools | `src/mastra/tools/audit-tools.ts` | One `createTool` per audit stage, with zod input/output schemas; reusable by any Mastra agent |
 | Agents | `src/mastra/agents/index.ts`, `src/mastra/prompts/*.md` | Intent classifier, screenshot/PDF reader, reviewer; structured output via zod; every call metered |
-| LLM config and metering | `src/mastra/llm.ts` | Model selection from environment, enable/disable logic, token and cost accounting |
+| LLM config and metering | `src/mastra/llm.ts` | Per-agent settings (`AUDIT_<AGENT>_ENABLED / MODEL / API_KEY / BASE_URL / TEMPERATURE / MAX_OUTPUT_TOKENS / PRICE_*`), enable logic, token and cost accounting |
 | Audit context | `src/core/pipeline.ts` | Builds the dataset, evidence index, identity resolver, policy and auditor once per process |
 | Evidence index | `src/core/evidence/index.ts` | Parses all 94 files and the activity stream into normalised **observations** and **snapshot scopes** |
 | Parsers | `src/core/evidence/structured.ts`, `logs.ts`, `media.ts`, `records.ts` | SQL (executed with `node:sqlite`), JSON bundles / exports / record lists, handover text, six log dialects with trace correlation, PDF text, OCR of screenshots |
@@ -143,7 +157,7 @@ box is the **rule-based fallback** used when no LLM is configured. Everything el
 | Auditor | `src/core/audit.ts` | Links records to the subject, reconstructs state at `audit_at`, builds and orders steps |
 | Batch reconciliation | `src/core/reconcile.ts` | Attributes records that carry no identifier (404 profile lookups, anonymised analytics) via the deletion-worker batch around `reported_at` |
 | Policy | `src/core/policy.ts` | Category → treatment from `deletion_rules.csv`; treatment + state → finding / remediation / verification |
-| Validator | `src/core/validate.ts` | Output contract: statuses, step numbering, allowed operation/state pairs, ordering, citation rules |
+| Validator | `src/core/validate.ts` | Output contract: statuses, step numbering, allowed operation/state pairs, ordering, citation rules. Runs inside `plan-deletion-steps` and again in the CLI for every row |
 
 ---
 
@@ -160,13 +174,13 @@ flowchart LR
         IR --> G
         G --> INTENT["intent"]
     end
-    subgraph EVID["Once per evidence file (cached by hash)"]
+    subgraph EVID["Per evidence file — text cached (path + sha256), vision results cached (sha256 + model)"]
         PNG["11 screenshots"] --> OCR["ML: tesseract.js OCR\n(sharp upscaling)"]
         PDF["4 PDFs"] --> PP["pdf-parse text"]
-        OCR --> VA["LLM: evidence-vision-agent\nclaude-sonnet-5-5\n(image + OCR text)"]
-        PP --> VA
-        OCR --> SR["Rules: screen-aware\ninterpretation"]
-        PP --> SR
+        OCR --> VQ{"vision agent\nenabled?"}
+        PP --> VQ
+        VQ -- yes --> VA["LLM: evidence-vision-agent\nclaude-sonnet-5-5\nPNG: image + OCR text\nPDF: text only"]
+        VQ -- "no / call failed" --> SR["Rules: screen-aware\ninterpretation"]
         VA --> OBS["observations"]
         SR --> OBS
     end
@@ -183,17 +197,17 @@ flowchart LR
     classDef rules fill:#f1f5f9,stroke:#64748b,stroke-dasharray:4 3,color:#0f172a
     class IA,VA,RA llm
     class OCR ml
-    class IR,SR,G rules
+    class IR,SR,G,VQ rules
 ```
 
 ### 2A.2 Summary table
 
 | # | Where | Technique | Model (default) | Used for the submitted `output.csv`? | Fallback |
 | --- | --- | --- | --- | --- | --- |
-| 1 | Workflow step `classify-intent` → tool `classify-request-intent` → `deletion-intent-agent` | LLM, structured output (zod), temperature 0 | `anthropic/claude-haiku-5-5` | **No**: no API key was available in the build environment | multilingual rules in `src/core/intent.ts` |
-| 2 | Evidence index → `evidence-vision-agent` for screenshots and PDFs | multimodal LLM (image + OCR text), structured output | `anthropic/claude-sonnet-5-5` | **No**: same reason | OCR + screen-aware rules in `src/core/evidence/media.ts` |
-| 3 | Workflow step `plan-steps` → `audit-reviewer-agent` | LLM critique of the finished plan | `anthropic/claude-sonnet-5-5` | No: opt-in (`AUDIT_LLM_REVIEW=1`) | none needed; it only annotates the trace |
-| 4 | Screenshot text extraction | ML OCR (tesseract.js LSTM, English model shipped as an npm package) | `@tesseract.js-data/eng` 4.0.0_best_int | **Yes**: all 11 screenshots (text cached in `cache/media_text_cache.json`) | — |
+| 1 | Workflow step `classify-intent` → tool `classify-request-intent` → `deletion-intent-agent` | LLM, structured output (zod), temperature from `AUDIT_INTENT_TEMPERATURE` (0) | `AUDIT_INTENT_MODEL` = `anthropic/claude-haiku-5-5` | **No**: no API key was available in the build environment | multilingual rules in `src/core/intent.ts` (always run; cross-check and guardrail) |
+| 2 | Evidence index → `evidence-vision-agent` for screenshots and PDFs | multimodal LLM (image + OCR text for PNG, text for PDF), structured output; result **replaces** the rule interpretation (no rule guardrail) and is cached per file hash + model | `AUDIT_VISION_MODEL` = `anthropic/claude-sonnet-5-5` | **No**: same reason | OCR + screen-aware rules in `src/core/evidence/media.ts` |
+| 3 | Workflow step `plan-steps` → `audit-reviewer-agent` | LLM critique of the finished plan | `AUDIT_REVIEW_MODEL` = `anthropic/claude-sonnet-5-5` | No: opt-in (`AUDIT_REVIEW_ENABLED=true`) | none needed; it only annotates the trace |
+| 4 | Screenshot text extraction | ML OCR (tesseract.js LSTM, English model shipped as an npm package) | `@tesseract.js-data/eng` 4.0.0_best_int | **Yes**: all 11 screenshots (text cached, with the 4 PDF texts, in `cache/media_text_cache.json`) | — |
 | 5 | Development of the solution | Claude Code, plus a 10-agent verification workflow that independently re-derived 17 hard cases | Claude (session model) | Shaped the rules; not part of the runtime | — |
 
 Why the LLMs sit at the edges and not in the decision core: the grader compares exact resource ids, operations,
@@ -203,8 +217,9 @@ output feeds the same engine.
 
 ### 2A.3 Turning the LLM agents on
 
-The agents are already implemented and registered in the Mastra instance. They switch on automatically when a
-provider key is present.
+The agents are already implemented and registered in the Mastra instance. Each one is configured on its own through
+`AUDIT_<AGENT>_*` variables, so every agent can use a different provider, model, key or endpoint (section 5.5).
+Run every command below **from `code/`**.
 
 1. **Verify the wiring without a key** (uses Mastra's mock language model through the production code paths):
 
@@ -215,35 +230,30 @@ provider key is present.
    You should see `source=llm+rules` for intent, an `llm-vision` observation for the connector screenshot, and
    metered usage for `mock/intent-mock-model` and `mock/vision-mock-model`.
 
-2. **Add your key** to the environment (never commit it; `code/.env` is git-ignored):
+2. **Create your environment file** from the sample (git-ignored; loaded automatically):
 
    ```bash
-   export ANTHROPIC_API_KEY=your-key-here
+   cp .env.example .env
    ```
 
-3. **Optional: pick models** (any Mastra model-router id, e.g. `openai/gpt-5-mini` with `OPENAI_API_KEY`):
+3. **Fill in keys and models** in `code/.env`: at minimum the provider key that matches each enabled agent's model
+   (the defaults are Anthropic, so `ANTHROPIC_API_KEY`). Each agent can point elsewhere, e.g.
+   `AUDIT_INTENT_MODEL=openai/gpt-5-mini` with `OPENAI_API_KEY`, or its own `AUDIT_INTENT_API_KEY` /
+   `AUDIT_INTENT_BASE_URL`.
 
-   ```bash
-   export AUDIT_INTENT_MODEL=anthropic/claude-haiku-5-5
-   ```
-
-4. **Run the audit**:
+4. **Run the audit** — the first lines print each agent's resolved configuration (ON/off, model, key source; never
+   the key itself):
 
    ```bash
    npm start
    ```
 
-   `evaluation/usage_report.md` now lists real calls, input/output tokens and estimated cost per model.
+   `evaluation/usage_report.md` then lists every agent's configuration and its real calls, tokens and estimated cost.
 
-5. **Compare against the deterministic baseline**:
+5. **Compare with the deterministic baseline**: run `npm run evaluate` with the keys set, then again with
+   `AUDIT_LLM=off`, and compare the two metric blocks it writes into `evaluation/evaluation_report.md`.
 
-   ```bash
-   npm run evaluate
-   ```
-
-   Set `AUDIT_LLM=off` for a run without the LLM agents.
-
-6. **Optional reviewer**: `export AUDIT_LLM_REVIEW=1` adds per-case concerns to the trace (`--trace` flag).
+6. **Optional reviewer**: set `AUDIT_REVIEW_ENABLED=true`; its concerns appear in the trace (`npm start -- --trace .runs/trace.jsonl`).
 
 ### 2A.4 Adding a new LLM agent
 
@@ -252,8 +262,9 @@ Example: an agent that breaks ties when several identifier-less records compete 
 1. **Prompt**: write `src/mastra/prompts/<name>.md` (role, inputs, the exact output fields).
 2. **Agent**: in `src/mastra/agents/index.ts`, create
    `new Agent({ id, name, instructions: prompt('<name>'), model: () => resolveModel('<role>') })`. Add the role to
-   `AgentRole`, `DEFAULT_MODELS` and the environment mapping in `src/mastra/llm.ts`.
-3. **Schema and call**: define a zod schema. Call `agent.generate(input, { structuredOutput: { schema }, modelSettings: { temperature: 0 } })`,
+   `AgentRole`, `ROLE_PREFIX` (its `AUDIT_<AGENT>` prefix) and `DEFAULT_MODELS` in `src/mastra/llm.ts`, and document the
+   new variables in `.env.example`.
+3. **Schema and call**: define a zod schema. Call `agent.generate(input, { structuredOutput: { schema }, modelSettings: modelSettings('<role>') })`,
    then record `res.totalUsage` with `usageTracker.record(...)`. Wrap the call in `try/catch` and return `null` so the
    deterministic path takes over on any failure.
 4. **Use it from a tool or step**: call it inside the relevant `createTool` (`src/mastra/tools/audit-tools.ts`) or
@@ -312,7 +323,7 @@ flowchart TB
 | P2 Classify intent | `request_text` | intent, request type | explicit "do not delete" wins over deletion vocabulary; LLM agent decides when configured |
 | P3 Resolve identity | request email, identities, audit log | identifier tokens | the request email may be historical; all historical emails, phones and hashes are kept |
 | P4 Discover resources | tokens, observations, activity | linked resources | exact identifier match (look-alikes such as `name.jr@` never match), trace-id correlation in logs, catalog links, source-record references both ways, batch reconciliation; linking evidence must be dated ≤ `audit_at` (later readbacks only if the person has no later request) |
-| P5 Reconstruct state | observations, scopes | state + evidence id per resource | only post-request evidence from files captured ≤ `audit_at`; a copy in any replica counts as present; an enumerating snapshot proves absence only for records with no explicit post-request sighting |
+| P5 Reconstruct state | observations, scopes | state + evidence id per resource | only post-request evidence from files captured ≤ `audit_at`; the latest sighting wins, and among copies in the same snapshot (primary vs replicas) the most exposed state wins; absence by omission only for deletable categories (profile, search, export, cache, attachment, marketing), from a same-system snapshot (post-report preferred, then most copies compared), and only when there is no explicit post-request sighting; in-scope records with no citeable state get a verification-only plan in INCOMPLETE cases |
 | P6 Apply policy | rules, category, state | treatment and step plan | DELETE / REDACT / ANONYMIZE / RETAIN / BLOCK_RESTORE / DISABLE_FLOW |
 | P7 Build steps | plans | ordered steps | findings → remediation → verification; within a phase by operation order, then `system_id`, then `resource_id` |
 | P8 Validate | steps, manifest, activity, audit log | pass / problems | cited ids exist and were captured ≤ `audit_at`; future work has `evidence_id: ""` |
@@ -333,11 +344,13 @@ classDiagram
         identifiers: string[]
         claim?: boolean
         copy?: string
+        parser: string
     }
     class SnapshotScope {
         evidenceId: string
         system: string
         capturedAt: string
+        fileCapturedAt?: string
         replicaCopies: number
         resources: Set~string~
     }
@@ -368,7 +381,7 @@ classDiagram
     Observation "many" --> "1" LinkedResource : attributes
     SnapshotScope --> ResourceAssessment : proves absence
     LinkedResource <|-- ResourceAssessment
-    ResourceAssessment "1" --> "1..3" Step : produces
+    ResourceAssessment "1" --> "0..3" Step : produces
 ```
 
 `ObservedState` is one of `PRESENT`, `ABSENT`, `IDENTIFIABLE`, `ANONYMIZED`, `REDACTED`, `ACTIVE`, `DISABLED`,
@@ -385,8 +398,14 @@ classDiagram
 | `EMAIL_DELIVERY_LOG` | rule_11 | REDACT | identifiable → `REPORT_EXPOSED_PII` | `VERIFY_RECORD_REDACTED` |
 | `SECURITY_AUDIT_LOG` (in retention), `LEGAL_HOLD_RECORD` (hold active) | rule_12/13 | RETAIN | — | `VERIFY_RECORD_PRESENT` |
 | `BACKUP_ARCHIVE` | rule_14 | retain + block restore | restorable → `REPORT_RESTORE_RISK` | `VERIFY_RESTORE_BLOCKED` |
+| `SECONDARY_IDENTIFIER` (record keyed by a historical identifier hash, e.g. marketing contact lookups) | rule_02 | DELETE | present → `REPORT_REMAINING_RECORD` | `VERIFY_RECORD_ABSENT` |
 | `ACCOUNT_TOMBSTONE` | rule_15 | REDACT (keep stable `user_id`) | name/email/phone/hash present → `REPORT_EXPOSED_PII` | `VERIFY_RECORD_REDACTED` |
 | integration data flow | no-recreation principle | DISABLE | enabled → `REPORT_ACTIVE_DATA_FLOW` | `VERIFY_DATA_FLOW_DISABLED` |
+
+Notes: retention conditions are evaluated, not assumed: a security audit record or legal hold whose `retention_until` /
+`retained_until` is before `audit_at` is treated as DELETE. A record found ABSENT counts as compliant for the REDACT,
+ANONYMIZE, BLOCK_RESTORE and DISABLE treatments too, and is verified as `VERIFY_RECORD_ABSENT` (or the treatment's own
+verification for backups and flows).
 
 ---
 
@@ -474,6 +493,7 @@ sequenceDiagram
         W->>T5: request, assessments
         T5->>T5: buildSteps + validateCaseResult
         T5-->>W: COMPLETE or INCOMPLETE, steps, problems
+        Note over W: if the email resolves to no known person, no record can be attributed: COMPLETE with [] (traced as a warning)
         opt AUDIT_LLM_REVIEW=1
             W->>RA: assessments + steps
             RA-->>W: concerns (attached to trace only)
@@ -494,8 +514,8 @@ sequenceDiagram
     participant IA as Intent agent
     end
     W->>R: classify
-    R->>R: deletion vocabulary "remove" found
-    R->>R: negation "marketing lists only" found
+    R->>R: negations are checked before deletion vocabulary
+    R->>R: negation "I still want ... receipts" matched
     R-->>W: NON_DELETION (marketing_opt_out, confidence 0.95)
     opt LLM enabled
         W->>IA: classify
@@ -620,8 +640,8 @@ sequenceDiagram
     else fallback
         Idx->>R: OCR text + manifest origin
         R->>R: repair OCR ids ("user 17" → "user_17"), find resource ids and aliases
-        R->>R: state from screen context (e.g. connector "Continuous" → ACTIVE)
-        R-->>Idx: observations for the screen's subject system only
+        R->>R: state from screen context (e.g. flows ACTIVE unless disabled / paused / stopped / inactive appears)
+        R-->>Idx: state and category only for the screen authoritative systems, other ids as stateless references
     end
     Cat-->>Idx: resource ↔ email / user_id (identity for dense list screens)
 ```
@@ -640,7 +660,8 @@ sequenceDiagram
     loop primary profiles, then anonymised analytics
         B->>Act: worker operations inside each request's window around reported_at
         B->>B: drop records owned by someone else
-        B->>B: primary profile: worker result must agree with reported_status
+        B->>B: windows: profile DELETE_RECORD reported_at −2h (not before requested_at) to +0.5h, analytics ANONYMIZE_RECORD −45m to +15m
+        B->>B: primary profile: operations whose result agrees with reported_status are preferred, otherwise any in-window one
         B->>B: analytics: only requests whose other records are settled (or that have none)
         B->>B: assign requests with a single candidate first, then break ties in case order
     end
@@ -693,18 +714,25 @@ The `dataset/` folder must sit next to `code/` (it does in the repository). To p
 npm start
 ```
 
-Expected console output (timings vary):
+Expected console output (timings vary; agent lines show `off` until you configure keys):
 
 ```text
+agent config (no .env file; environment only):
+  - intent: off (enabled=auto, model=anthropic/claude-haiku-5-5, no key, temperature=0)
+  - vision: off (enabled=auto, model=anthropic/claude-sonnet-5-5, no key, temperature=0)
+  - reviewer: off (enabled=false, model=anthropic/claude-sonnet-5-5, no key, temperature=0)
 auditing 518 requests with the Mastra deletion-audit workflow...
 wrote 518 rows to <repo>/output.csv in 5.0s { INCOMPLETE: 348, COMPLETE: 160, NOT_APPLICABLE: 10 }
 updated evaluation/usage_report.md
 ```
 
 - `output.csv` is written at the repository root.
-- The command exits with code 1 and lists the problems if any row breaks the output contract.
-- OCR text for the 11 screenshots is cached in `code/cache/media_text_cache.json`. Delete that file to force
-  re-OCR, which adds about 30 seconds.
+- The command exits with code 1 and lists the problems if any row (NOT_APPLICABLE included) breaks the output contract.
+- The printed time runs from process start (evidence loading and OCR included).
+- Extracted text for the 11 screenshots and 4 PDFs is cached in `code/cache/media_text_cache.json` (keyed by path,
+  checked by sha256). Delete that file to force re-OCR, which adds about 30 seconds.
+- `npm start` also regenerates the tracked `code/evaluation/usage_report.md`, so expect a small timing diff in
+  `git status` after a run.
 
 ### 5.4 Other commands
 
@@ -712,50 +740,97 @@ updated evaluation/usage_report.md
 | --- | --- |
 | `npm run samples` | runs the 32 public sample requests; predictions go to `code/.runs/sample_predictions.csv` |
 | `npm run evaluate` | scores the samples against `dataset/sample_output.csv` and the 8 participant-created cases, and rewrites the metrics block of `evaluation/evaluation_report.md` |
+| `npm run llm-smoke` | drives the real agent code paths with Mastra's mock model (no key needed) |
 | `npm start -- --trace .runs/trace.jsonl` | also writes one JSON line per case explaining linked records, link evidence, state evidence and the rule applied |
-| `npm start -- --input <file.csv> --output <out.csv>` | audits any CSV with the request columns |
+| `npm start -- --input <file.csv> --output <out.csv>` | audits any CSV with the request columns (does not rewrite the usage report) |
 | `npm run typecheck` | `tsc --noEmit` over the whole project |
 
-### 5.5 Optional: switch on the LLM agents
+### 5.5 Configuring the LLM agents (`code/.env`)
 
-Create an uncommitted `code/.env` (already ignored by git) or export variables in your shell. Keys are read from the
-environment only.
-
-```bash
-export ANTHROPIC_API_KEY=your-key-here
-```
+All agent settings live in environment variables. The sample file
+[`code/.env.example`](../.env.example) lists every variable with comments. Copy it and edit the copy:
 
 ```bash
-npm start
+cp .env.example .env
 ```
 
-| Variable | Default | Effect |
+`src/env.ts` loads `code/.env` (or the file named by `AUDIT_ENV_FILE`) before anything else. Variables already
+exported in the shell take precedence. `.env` is git-ignored, so keys never get committed.
+
+#### Per-agent variables
+
+Each agent has its own prefix — `AUDIT_INTENT_*` (intent agent), `AUDIT_VISION_*` (screenshot / PDF agent),
+`AUDIT_REVIEW_*` (reviewer) — so each agent can use a different provider, model, key or endpoint:
+
+| Variable (replace `<AGENT>` by `INTENT`, `VISION` or `REVIEW`) | Default | Meaning |
 | --- | --- | --- |
-| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / … | unset | enables the agents for that provider |
-| `AUDIT_MODEL` | — | one Mastra model id for every agent |
-| `AUDIT_INTENT_MODEL` | `anthropic/claude-haiku-5-5` | intent agent |
-| `AUDIT_VISION_MODEL` | `anthropic/claude-sonnet-5-5` | screenshot / PDF agent |
-| `AUDIT_REVIEW_MODEL` | `anthropic/claude-sonnet-5-5` | reviewer agent |
-| `AUDIT_LLM` | `auto` | `off` forces the deterministic path |
-| `AUDIT_LLM_VISION` | `1` | `0` keeps OCR rules for media |
-| `AUDIT_LLM_REVIEW` | unset | `1` runs the reviewer; notes go to the trace only |
+| `AUDIT_<AGENT>_ENABLED` | `auto` (`false` for REVIEW) | `auto` = run when credentials exist; `true`; `false` |
+| `AUDIT_<AGENT>_MODEL` | INTENT `anthropic/claude-haiku-5-5`, VISION and REVIEW `anthropic/claude-sonnet-5-5` | Mastra model-router id `provider/model` |
+| `AUDIT_<AGENT>_API_KEY` | unset | key used only by this agent; overrides the provider-wide key |
+| `AUDIT_<AGENT>_BASE_URL` | unset | endpoint used only by this agent (OpenAI-compatible gateway, proxy or self-hosted server) |
+| `AUDIT_<AGENT>_TEMPERATURE` | `0` | sampling temperature |
+| `AUDIT_<AGENT>_MAX_OUTPUT_TOKENS` | model default | output cap |
+| `AUDIT_<AGENT>_PRICE_INPUT_PER_MTOK`, `..._OUTPUT_PER_MTOK` | built-in table | USD per 1M tokens for the usage report (for models not in the table) |
+| `AUDIT_VISION_CACHE` | `1` | `0` re-reads every artifact instead of using `cache/vision_llm_cache.json` |
 
-With agents on, `evaluation/usage_report.md` records real calls, tokens and estimated cost per model.
+#### Shared variables
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, `OPENROUTER_API_KEY`, `XAI_API_KEY`, `DEEPSEEK_API_KEY` | unset | provider-wide keys. An agent uses the key whose provider matches the prefix of **its own** model id; with the Anthropic defaults, `OPENAI_API_KEY` alone enables nothing |
+| `AUDIT_LLM` | `auto` | `off` forces the deterministic path for every agent |
+| `AUDIT_MODEL`, `AUDIT_BASE_URL`, `AUDIT_TEMPERATURE`, `AUDIT_MAX_OUTPUT_TOKENS` | unset | shared defaults; any `AUDIT_<AGENT>_*` value overrides them |
+| `AUDIT_ENV_FILE` | `code/.env` | alternative environment file |
+| `DATASET_DIR` | `../dataset` | dataset location |
+
+Older names still work: `AUDIT_LLM_VISION=0` (= `AUDIT_VISION_ENABLED=false`) and `AUDIT_LLM_REVIEW=1`
+(= `AUDIT_REVIEW_ENABLED=true`).
+
+#### Example: a different LLM per agent
+
+```dotenv
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+GOOGLE_GENERATIVE_AI_API_KEY=...
+AUDIT_INTENT_MODEL=openai/gpt-5-mini
+AUDIT_VISION_MODEL=anthropic/claude-sonnet-5-5
+AUDIT_REVIEW_MODEL=google/gemini-2.5-pro
+AUDIT_REVIEW_ENABLED=true
+```
+
+#### Example: intent agent on a local OpenAI-compatible server, others on Anthropic
+
+```dotenv
+ANTHROPIC_API_KEY=sk-ant-...
+AUDIT_INTENT_MODEL=openai/llama3.1:8b
+AUDIT_INTENT_BASE_URL=http://localhost:11434/v1
+AUDIT_INTENT_API_KEY=local-placeholder
+AUDIT_INTENT_PRICE_INPUT_PER_MTOK=0
+AUDIT_INTENT_PRICE_OUTPUT_PER_MTOK=0
+```
+
+After `npm start`, the console's `agent config` lines and the "Agent configuration for this run" table in
+`evaluation/usage_report.md` show what each agent resolved to (ON/off, model, key source, endpoint), never the key
+itself. If a call fails (bad key, network, malformed output), that agent falls back to its deterministic
+counterpart for that item and the failure is counted in the usage report.
 
 ### 5.6 Windows notes
 
 - Use PowerShell. `npm install`, `npm start`, `npm run samples` and `npm run evaluate` work the same way.
-- Set variables with `$env:ANTHROPIC_API_KEY = "your-key-here"` instead of `export`.
+- Copy the sample with `Copy-Item .env.example .env`; set ad-hoc variables with `$env:ANTHROPIC_API_KEY = "your-key-here"`.
 - Package with `Compress-Archive` as described in the root `README.md`.
 
 ### 5.7 Troubleshooting
 
 | Symptom | Fix |
 | --- | --- |
+| `npm error enoent ... package.json` | run npm from `code/` (`cd code`), not from the repository root |
 | `No such built-in module: node:sqlite` | upgrade Node.js to 22.13 or newer |
 | `sharp` fails to install | delete `node_modules`, run `npm install` again on the same machine that will run the code |
-| OCR text differs on another machine | keep the shipped `cache/media_text_cache.json`; it is keyed by file hash, so it is reused as long as the screenshots are unchanged |
-| `wrote 0 rows` / file not found | run the commands from `code/`, with `dataset/` next to it, or set `DATASET_DIR` |
+| OCR text differs on another machine | keep the shipped `cache/media_text_cache.json`; entries are checked by sha256 and reused while the files are unchanged |
+| `wrote 0 rows` | `dataset/` is not next to `code/` (missing CSVs are read as empty): fix the layout or set `DATASET_DIR` |
+| an agent shows `off` although a key is set | its model's provider prefix does not match the key (e.g. `OPENAI_API_KEY` with an `anthropic/...` model), or `AUDIT_<AGENT>_ENABLED=false`, or `AUDIT_LLM=off` |
+| agent calls counted as failures in the usage report | check the key / endpoint / model id; the audit still completes using the deterministic fallback |
 
 ---
 
@@ -769,10 +844,11 @@ hackerrank-orchestrate-october26/
 ├── log.txt                       agent chat transcript
 ├── dataset/                      participant data (not packaged)
 └── code/
-    ├── package.json, tsconfig.json
+    ├── package.json, tsconfig.json, .env.example (copy to .env)
     ├── docs/ARCHITECTURE.md      this document (+ diagrams/*.svg)
-    ├── cache/media_text_cache.json
+    ├── cache/                    media_text_cache.json (OCR/PDF text), vision_llm_cache.json (when the vision agent runs)
     ├── src/
+    │   ├── env.ts                loads code/.env first
     │   ├── main.ts               CLI
     │   ├── mastra/               index.ts, agents/, tools/, workflows/, prompts/, llm.ts
     │   ├── core/                 pipeline, identity, intent, audit, reconcile, policy, validate, evidence/

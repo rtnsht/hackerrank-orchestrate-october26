@@ -3,6 +3,7 @@
 //   npm start                         -> dataset/deletion_requests.csv -> <repo>/output.csv (+ usage report)
 //   npm start -- --samples            -> sample requests, scored against dataset/sample_output.csv
 //   npm start -- --input X --output Y -> custom files
+import { loadedEnvFile } from './env.js'; // must stay first: loads code/.env before agents are configured
 import fs from 'node:fs';
 import path from 'node:path';
 import { parseCsv, toCsv } from './core/csv.js';
@@ -11,7 +12,8 @@ import { getAuditContext } from './core/pipeline.js';
 import type { DeletionRequest, Step } from './core/types.js';
 import { extractMediaWithAgent } from './mastra/agents/index.js';
 import { mastra } from './mastra/index.js';
-import { usageTracker } from './mastra/llm.js';
+import { describeAgentConfig, usageTracker } from './mastra/llm.js';
+import { validateCaseResult } from './core/validate.js';
 import { writeUsageReport } from './report/usage-report.js';
 
 interface Args {
@@ -79,6 +81,8 @@ export async function runAudit(requests: DeletionRequest[], concurrency = 8): Pr
   return { rows, seconds: (Date.now() - t0) / 1000 };
 }
 
+const PROCESS_START = Date.now();
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const ctx = await getAuditContext({ mediaExtractor: extractMediaWithAgent, log: (m) => console.error(`[evidence] ${m}`) });
@@ -87,10 +91,19 @@ async function main() {
     : args.samples
       ? ctx.dataset.sampleRequests
       : ctx.dataset.requests;
+  console.error(`agent config${loadedEnvFile ? ` (from ${path.relative(process.cwd(), loadedEnvFile) || loadedEnvFile})` : ' (no .env file; environment only)'}:`);
+  for (const line of describeAgentConfig()) console.error(`  - ${line}`);
   console.error(`auditing ${requests.length} requests with the Mastra deletion-audit workflow...`);
-  const { rows, seconds } = await runAudit(requests, args.concurrency);
+  const { rows } = await runAudit(requests, args.concurrency);
+  const seconds = (Date.now() - PROCESS_START) / 1000; // includes evidence loading / OCR
 
-  const problems = rows.flatMap((r) => r.problems.map((p) => `${r.case_id}: ${p}`));
+  // contract check for every row (NOT_APPLICABLE included), on top of the per-step check inside plan-deletion-steps
+  const byId = new Map(requests.map((q) => [q.case_id, q]));
+  const problems = rows.flatMap((r) => {
+    const req = byId.get(r.case_id);
+    const all = new Set([...r.problems, ...(req ? validateCaseResult(ctx, req, { case_id: r.case_id, deletion_status: r.deletion_status as never, steps: r.steps }) : ['unknown case_id'])]);
+    return [...all].map((p) => `${r.case_id}: ${p}`);
+  });
   const ids = new Set(rows.map((r) => r.case_id));
   if (ids.size !== requests.length) problems.push(`expected ${requests.length} unique rows, got ${ids.size}`);
   fs.mkdirSync(path.dirname(args.output), { recursive: true });

@@ -1,3 +1,4 @@
+import '../env.js'; // loads code/.env first
 // LLM wiring smoke test (no API key needed): injects Mastra's mock language model into the intent and vision
 // agents and drives the *production* code paths (classifyIntent, extractMediaWithAgent) end to end, including
 // structured-output parsing, the rule cross-check and token metering. It proves integration, not model quality.

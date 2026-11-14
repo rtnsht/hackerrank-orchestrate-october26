@@ -272,3 +272,28 @@ repo_root=/home/user/hackerrank-orchestrate-october26
 worktree=main
 parent_agent=none
 
+## [2026-11-14T13:05:00Z] Sample env file with independently configurable agents
+
+User Prompt (verbatim, secrets redacted):
+question
+1 - I see there are multiple AI agents to be configured as per the architecture diagram, can you create sample env file to be used.
+each should be configurable environment variable so that each agent can be used for different LLM if required.
+
+Agent Response Summary:
+Added code/.env.example and per-agent configuration: AUDIT_INTENT_*, AUDIT_VISION_* and AUDIT_REVIEW_* each set ENABLED, MODEL, API_KEY, BASE_URL, TEMPERATURE, MAX_OUTPUT_TOKENS and price overrides, with shared AUDIT_* defaults and provider-wide keys as fallbacks. A per-agent key or endpoint is passed to Mastra as an { id, apiKey, url } model config. A new src/env.ts loads code/.env (shell variables win). The CLI prints each agent's resolved config (never secrets) and the usage report records it. Tested a copied .env.example with no keys (identical output) and a three-provider mix with dummy keys (each agent resolved independently, failed safely, identical output). Also applied the documentation verification findings: the CLI now validates every row including NOT_APPLICABLE, vision-agent results are cached per file hash + model, wall-clock timing includes evidence loading, DATASET_DIR treats an empty value as unset, and ARCHITECTURE.md and README were corrected (14 fact-check and 5 runner findings), with all 14 diagrams re-rendered.
+
+Actions:
+* created code/.env.example, code/src/env.ts
+* rewrote code/src/mastra/llm.ts (agentSettings, resolveModel with per-agent key/endpoint, modelSettings, describeAgentConfig)
+* edited code/src/mastra/agents/index.ts (vision cache, per-agent modelSettings), code/src/main.ts, code/src/report/usage-report.ts, code/src/core/dataset.ts, code/evaluation/evaluate.ts, code/src/scripts/llm-smoke.ts
+* edited code/docs/ARCHITECTURE.md, README.md; re-rendered code/docs/diagrams/*.svg
+* tests: tsc, npm start (output.csv unchanged), npm run evaluate, npm run llm-smoke, env-file scenarios T1/T2
+
+Context:
+tool=Claude Code
+model=claude-opus-5-5
+branch=freshbuild-mastraai-101
+repo_root=/home/user/hackerrank-orchestrate-october26
+worktree=main
+parent_agent=none
+

@@ -2,6 +2,7 @@
 //   1. the 32 public samples (scored against dataset/sample_output.csv), and
 //   2. the participant-created custom cases (evaluation/custom-cases.ts),
 // then rewrites the metrics block of evaluation/evaluation_report.md.
+import '../src/env.js'; // loads code/.env (inherited by the child runs)
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';

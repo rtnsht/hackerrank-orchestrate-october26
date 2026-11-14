@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { estimateCost, llmEnabled, modelFor, PRICING, type UsageRecord } from '../mastra/llm.js';
+import { agentSettings, estimateCost, hasCredentials, llmEnabled, modelFor, PRICING, ROLE_PREFIX, type AgentRole, type UsageRecord } from '../mastra/llm.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -26,7 +26,7 @@ export function writeUsageReport(opts: {
   const totIn = usage.reduce((s, u) => s + u.inputTokens, 0);
   const totOut = usage.reduce((s, u) => s + u.outputTokens, 0);
   const totCalls = usage.reduce((s, u) => s + u.calls, 0);
-  const costs = usage.map((u) => estimateCost(u.model, u.inputTokens, u.outputTokens));
+  const costs = usage.map((u) => estimateCost(u.model, u.inputTokens, u.outputTokens, u.role));
   const totCost = costs.reduce<number>((s, c) => s + (c ?? 0), 0);
   const llmOn = { intent: llmEnabled('intent'), vision: llmEnabled('vision'), reviewer: llmEnabled('reviewer') };
 
@@ -41,8 +41,8 @@ export function writeUsageReport(opts: {
   const visionOut = 450;
   const intentModel = modelFor('intent');
   const visionModel = modelFor('vision');
-  const projIntentCost = estimateCost(intentModel, intentIn * requests, intentOut * requests);
-  const projVisionCost = estimateCost(visionModel, visionIn * media, visionOut * media);
+  const projIntentCost = estimateCost(intentModel, intentIn * requests, intentOut * requests, 'intent');
+  const projVisionCost = estimateCost(visionModel, visionIn * media, visionOut * media, 'vision');
 
   const lines: string[] = [];
   lines.push('# Token Usage and Cost Report');
@@ -61,6 +61,18 @@ export function writeUsageReport(opts: {
   lines.push(`| Evidence files parsed | ${opts.stats.files} (SQL ${opts.stats.sql}, JSON ${opts.stats.json}, logs ${opts.stats.log}, text ${opts.stats.text}, PDF ${opts.stats.pdf}, images ${opts.stats.image}) |`);
   lines.push(`| OCR calls this run (tesseract.js, local, cache misses) | ${opts.stats.ocrCalls} |`);
   lines.push(`| LLM agents enabled | intent: ${llmOn.intent ? 'yes' : 'no'}, vision: ${llmOn.vision ? 'yes' : 'no'}, reviewer: ${llmOn.reviewer ? 'yes' : 'no'} |`);
+  lines.push('');
+  lines.push('### Agent configuration for this run');
+  lines.push('');
+  lines.push('Each agent is configured independently with `AUDIT_<AGENT>_*` variables (see `code/.env.example`). Secrets are never printed.');
+  lines.push('');
+  lines.push('| Agent | Variable prefix | Running | Enabled setting | Model | Credentials | Endpoint | Temperature |');
+  lines.push('| --- | --- | --- | --- | --- | --- | --- | --- |');
+  for (const role of Object.keys(ROLE_PREFIX) as AgentRole[]) {
+    const s = agentSettings(role);
+    const cred = s.apiKey ? 'agent-specific key' : hasCredentials(role) ? 'provider key' : 'none';
+    lines.push(`| ${role} | \`${ROLE_PREFIX[role]}_*\` | ${llmEnabled(role) ? 'yes' : 'no'} | ${s.enabled} | ${s.model} | ${cred} | ${s.baseUrl ? 'custom' : 'provider default'} | ${s.temperature} |`);
+  }
   lines.push('');
   lines.push('### Per-model usage');
   lines.push('');
@@ -99,7 +111,7 @@ export function writeUsageReport(opts: {
   lines.push('### Assumptions');
   lines.push('');
   lines.push(`- Intent agent (\`${intentModel}\`): 1 call per request, ~${fmt(intentIn)} input / ~${intentOut} output tokens (prompt size measured from \`src/mastra/prompts/intent-classifier.md\`).`);
-  lines.push(`- Vision agent (\`${visionModel}\`): 1 call per screenshot/PDF (${media} artifacts), ~${fmt(visionIn)} input / ~${visionOut} output tokens; results are cached by file hash, so this is a one-time cost, not per request.`);
+  lines.push(`- Vision agent (\`${visionModel}\`): 1 call per screenshot/PDF (${media} artifacts), ~${fmt(visionIn)} input / ~${visionOut} output tokens; results are cached per (file hash, model) in \`cache/vision_llm_cache.json\`, so this is a one-time cost, not a per-run or per-request cost.`);
   lines.push('- Reviewer agent: off by default (`AUDIT_LLM_REVIEW=1` enables it; ~3k input / 300 output tokens per request).');
   lines.push(`- Prices (USD / 1M tokens): ${Object.entries(PRICING).filter(([m]) => m === intentModel || m === visionModel).map(([m, p]) => `${m} in ${p.input} / out ${p.output}`).join('; ')}.`);
   lines.push('');

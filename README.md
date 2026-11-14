@@ -44,17 +44,33 @@ A full run takes a few seconds (first run ~30 s extra if the OCR cache is missin
 
 ### Optional LLM agents (environment variables only — never commit keys)
 
-The decision engine is deterministic and needs **no API key**. Mastra LLM agents are switched on automatically when a
-provider key is present in the environment (or an uncommitted `.env` loaded by your shell):
+The decision engine is deterministic and needs **no API key**. The three Mastra LLM agents are configured
+**independently**, so each can use a different provider, model, key or endpoint. Start from the sample file:
+
+```bash
+cd code
+```
+
+```bash
+cp .env.example .env
+```
+
+`code/.env` is git-ignored and loaded automatically (shell variables take precedence). Then set, per agent
+(`<AGENT>` = `INTENT`, `VISION` or `REVIEW`):
 
 | Variable | Effect |
 | --- | --- |
-| `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`, …) | enables the intent agent and the screenshot/PDF vision agent for that provider |
-| `AUDIT_MODEL`, `AUDIT_INTENT_MODEL`, `AUDIT_VISION_MODEL`, `AUDIT_REVIEW_MODEL` | Mastra model ids, default `anthropic/claude-haiku-5-5` (intent) and `anthropic/claude-sonnet-5-5` (vision, reviewer) |
-| `AUDIT_LLM=off` | force the deterministic path even if a key is set |
-| `AUDIT_LLM_VISION=0` | keep OCR rules for screenshots/PDFs while using the intent agent |
-| `AUDIT_LLM_REVIEW=1` | run the reviewer agent; its concerns are attached to the trace (never to the submitted steps) |
+| `AUDIT_<AGENT>_ENABLED` | `auto` (run when credentials exist; default for INTENT and VISION), `true`, `false` (default for REVIEW) |
+| `AUDIT_<AGENT>_MODEL` | Mastra model-router id, default `anthropic/claude-haiku-5-5` (INTENT) and `anthropic/claude-sonnet-5-5` (VISION, REVIEW) |
+| `AUDIT_<AGENT>_API_KEY` / `AUDIT_<AGENT>_BASE_URL` | key / OpenAI-compatible endpoint for that agent only |
+| `AUDIT_<AGENT>_TEMPERATURE`, `AUDIT_<AGENT>_MAX_OUTPUT_TOKENS`, `AUDIT_<AGENT>_PRICE_*_PER_MTOK` | generation settings and price override for the usage report |
+| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, … | provider-wide keys, used by every agent whose model id has that provider prefix |
+| `AUDIT_LLM=off` | force the deterministic path for every agent |
 | `DATASET_DIR` | audit a different dataset directory with the same layout (used by the custom evaluation cases) |
+
+`npm start` prints each agent's resolved configuration (never the key), and `evaluation/usage_report.md` records it
+together with calls, tokens and cost. `npm run llm-smoke` proves the agent wiring with Mastra's mock model, no key
+needed. Full reference: [`code/docs/ARCHITECTURE.md` §5.5](./code/docs/ARCHITECTURE.md#55-configuring-the-llm-agents-codeenv).
 
 ---
 

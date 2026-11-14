@@ -5,11 +5,13 @@ import { fileURLToPath } from 'node:url';
 import { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
 import { classifyIntentRules, type IntentResult } from '../../core/intent.js';
-import type { Observation, ObservedState } from '../../core/types.js';
+import type { ObservedState } from '../../core/types.js';
+import { CODE_ROOT } from '../../core/dataset.js';
+import { sha256File } from '../../core/evidence/media.js';
 import type { ParsedEvidence } from '../../core/evidence/structured.js';
 import { normEmail, normPhone } from '../../core/normalize.js';
 import { systemFromResource } from '../../core/evidence/records.js';
-import { llmEnabled, modelFor, resolveModel, usageTracker } from '../llm.js';
+import { llmEnabled, modelFor, modelSettings, resolveModel, usageTracker } from '../llm.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const prompt = (name: string) => fs.readFileSync(path.join(here, '..', 'prompts', `${name}.md`), 'utf8');
@@ -56,7 +58,7 @@ export async function classifyIntent(text: string): Promise<IntentResult> {
   try {
     const res = await intentAgent.generate(`Customer message:\n"""\n${text}\n"""`, {
       structuredOutput: { schema: IntentSchema },
-      modelSettings: { temperature: 0 },
+      modelSettings: modelSettings('intent'),
     });
     usageTracker.record('intent', model, res.totalUsage);
     const llm = res.object as z.infer<typeof IntentSchema>;
@@ -97,25 +99,29 @@ function toToken(v: string): string | null {
   return null;
 }
 
-/** Mastra-agent screenshot/PDF extraction. Returns null (OCR rules fallback) when no vision model is configured. */
+type VisionRecords = z.infer<typeof VisionSchema>['records'];
+const VISION_CACHE = path.join(CODE_ROOT, 'cache', 'vision_llm_cache.json');
+let visionCache: Record<string, { file: string; model: string; records: VisionRecords }> | null = null;
+function loadVisionCache() {
+  if (!visionCache) visionCache = fs.existsSync(VISION_CACHE) ? JSON.parse(fs.readFileSync(VISION_CACHE, 'utf8')) : {};
+  return visionCache!;
+}
+
+/**
+ * Mastra-agent screenshot/PDF extraction. Returns null (OCR rules fallback) when no vision model is configured.
+ * Results are cached per (file content hash, model) in cache/vision_llm_cache.json, so each artifact is read by the
+ * model once rather than on every run. Mock models are never cached; AUDIT_VISION_CACHE=0 disables the cache.
+ */
 export async function extractMediaWithAgent(input: { fileId: string; filePath: string; origin: string; capturedAt: string; text: string }): Promise<ParsedEvidence | null> {
   if (!llmEnabled('vision')) return null;
   const model = modelFor('vision');
   const isPdf = input.filePath.toLowerCase().endsWith('.pdf');
-  try {
-    const content: unknown[] = [
-      { type: 'text', text: `Artifact origin: ${input.origin}; captured_at: ${input.capturedAt}.\nOCR/PDF text (may contain OCR errors):\n${input.text.slice(0, 6000)}` },
-    ];
-    if (!isPdf) content.push({ type: 'image', image: fs.readFileSync(input.filePath), mimeType: 'image/png' });
-    const res = await evidenceVisionAgent.generate([{ role: 'user', content }] as never, {
-      structuredOutput: { schema: VisionSchema },
-      modelSettings: { temperature: 0 },
-    });
-    usageTracker.record('vision', model, res.totalUsage);
-    const parsed = res.object as z.infer<typeof VisionSchema>;
-    const observations: Observation[] = parsed.records.map((r) => ({
+  const cacheKey = `${sha256File(input.filePath)}|${model}`;
+  const cacheable = !model.startsWith('mock/') && process.env.AUDIT_VISION_CACHE !== '0';
+  const toParsed = (records: VisionRecords): ParsedEvidence => ({
+    observations: records.map((r) => ({
       evidenceId: input.fileId,
-      kind: 'file',
+      kind: 'file' as const,
       capturedAt: input.capturedAt,
       observedAt: input.capturedAt,
       system: systemFromResource(r.resource_id) ?? r.system,
@@ -125,8 +131,29 @@ export async function extractMediaWithAgent(input: { fileId: string; filePath: s
       identifiers: r.is_subject ? r.identifiers.map(toToken).filter((t): t is string => !!t) : [],
       parser: 'llm-vision',
       note: r.is_subject ? 'screen-subject' : 'screen-reference',
-    }));
-    return { observations, scopes: [], text: input.text };
+    })),
+    scopes: [],
+    text: input.text,
+  });
+  const hit = cacheable ? loadVisionCache()[cacheKey] : undefined;
+  if (hit) return toParsed(hit.records);
+  try {
+    const content: unknown[] = [
+      { type: 'text', text: `Artifact origin: ${input.origin}; captured_at: ${input.capturedAt}.\nOCR/PDF text (may contain OCR errors):\n${input.text.slice(0, 6000)}` },
+    ];
+    if (!isPdf) content.push({ type: 'image', image: fs.readFileSync(input.filePath), mimeType: 'image/png' });
+    const res = await evidenceVisionAgent.generate([{ role: 'user', content }] as never, {
+      structuredOutput: { schema: VisionSchema },
+      modelSettings: modelSettings('vision'),
+    });
+    usageTracker.record('vision', model, res.totalUsage);
+    const parsed = res.object as z.infer<typeof VisionSchema>;
+    if (cacheable) {
+      loadVisionCache()[cacheKey] = { file: path.relative(CODE_ROOT, input.filePath), model, records: parsed.records };
+      fs.mkdirSync(path.dirname(VISION_CACHE), { recursive: true });
+      fs.writeFileSync(VISION_CACHE, JSON.stringify(visionCache, null, 2) + '\n');
+    }
+    return toParsed(parsed.records);
   } catch {
     usageTracker.record('vision', model, undefined, true);
     return null;
@@ -143,7 +170,7 @@ export async function reviewAudit(summary: unknown): Promise<z.infer<typeof Revi
   if (!llmEnabled('reviewer')) return null;
   const model = modelFor('reviewer');
   try {
-    const res = await auditReviewerAgent.generate(JSON.stringify(summary), { structuredOutput: { schema: ReviewSchema }, modelSettings: { temperature: 0 } });
+    const res = await auditReviewerAgent.generate(JSON.stringify(summary), { structuredOutput: { schema: ReviewSchema }, modelSettings: modelSettings('reviewer') });
     usageTracker.record('reviewer', model, res.totalUsage);
     return res.object as z.infer<typeof ReviewSchema>;
   } catch {

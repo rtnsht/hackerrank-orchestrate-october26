@@ -8,7 +8,7 @@ import type { ActivityRow, AuditRow, DeletionRequest, IdentityRow, ManifestRow, 
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const CODE_ROOT = path.resolve(here, '..', '..');
 export const REPO_ROOT = path.resolve(CODE_ROOT, '..');
-export const DATASET_DIR = path.resolve(process.env.DATASET_DIR ?? path.join(REPO_ROOT, 'dataset'));
+export const DATASET_DIR = path.resolve(process.env.DATASET_DIR?.trim() || path.join(REPO_ROOT, 'dataset'));
 
 export interface Dataset {
   dir: string;
